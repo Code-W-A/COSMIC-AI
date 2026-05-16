@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import Link from "next/link"
 import {
   Sparkles,
   Send,
@@ -306,7 +307,7 @@ export default function CosmicChatPage() {
 
       {/* ===== Top Bar ===== */}
       <header className="relative z-20 flex items-center justify-between border-b border-border px-4 py-3 backdrop-blur-xl sm:px-6">
-        <div className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3">
           <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-[rgba(109,75,255,0.15)]">
             <Sparkles className="h-5 w-5 text-cosmic-violet" />
             <div
@@ -321,7 +322,7 @@ export default function CosmicChatPage() {
               Cosmic AI
             </h1>
           </div>
-        </div>
+        </Link>
 
         <CosmicProfileCard />
       </header>

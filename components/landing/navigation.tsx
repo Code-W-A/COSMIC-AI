@@ -34,7 +34,7 @@ export function Navigation() {
       }`}
     >
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <a href="#" className="flex items-center gap-2">
+        <a href="/" className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#6D4BFF] to-[#D66BFF]">
             <Sparkles className="h-4 w-4 text-[#F5F2FF]" />
           </div>
@@ -57,7 +57,7 @@ export function Navigation() {
 
         <div className="hidden md:block">
           <a
-            href="#cta"
+            href="/onboarding"
             className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-2.5 text-sm font-medium text-[#F5F2FF] transition-all hover:shadow-lg hover:shadow-[#6D4BFF]/30"
           >
             Start Free Reading
@@ -93,7 +93,7 @@ export function Navigation() {
                 </a>
               ))}
               <a
-                href="#cta"
+                href="/onboarding"
                 onClick={() => setMobileOpen(false)}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-2.5 text-sm font-medium text-[#F5F2FF]"
               >

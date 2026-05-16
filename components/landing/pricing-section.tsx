@@ -122,15 +122,16 @@ export function PricingSection() {
                   ))}
                 </ul>
 
-                <button
-                  className={`mt-8 w-full rounded-full py-3 text-sm font-semibold transition-all ${
+                <a
+                  href="/onboarding"
+                  className={`mt-8 block w-full rounded-full py-3 text-center text-sm font-semibold transition-all ${
                     plan.featured
                       ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-[#F5F2FF] shadow-lg shadow-[#6D4BFF]/20 hover:shadow-xl hover:shadow-[#6D4BFF]/30"
                       : "border border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.05)] text-[#F5F2FF] hover:bg-[rgba(255,255,255,0.10)]"
                   }`}
                 >
                   {plan.cta}
-                </button>
+                </a>
               </div>
             </motion.div>
           ))}
