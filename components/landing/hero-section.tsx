@@ -254,7 +254,7 @@ export function HeroSection() {
             className="mt-10 flex flex-wrap items-center justify-center gap-4"
           >
             <a
-              href="#cta"
+              href="/onboarding"
               className="group relative inline-flex items-center gap-2.5 overflow-hidden rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-8 py-3.5 text-sm font-semibold text-foreground shadow-lg shadow-[#6D4BFF]/25 transition-all duration-300 hover:shadow-xl hover:shadow-[#6D4BFF]/40 hover:brightness-110"
             >
               {/* shimmer sweep */}

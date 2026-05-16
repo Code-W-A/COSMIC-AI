@@ -1,7 +1,9 @@
 "use client"
 
 import { useRef, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
+import Link from "next/link"
 import {
   Sparkles,
   User,
@@ -300,6 +302,7 @@ function FormField({
 
 /* ─── Main Onboarding Page ─── */
 export default function OnboardingPage() {
+  const router = useRouter()
   const [step, setStep] = useState(1)
   const [name, setName] = useState("")
   const [birthDate, setBirthDate] = useState("")
@@ -319,7 +322,7 @@ export default function OnboardingPage() {
       setStep(step + 1)
     } else {
       // Navigate to chat
-      window.location.href = "/chat"
+      router.push("/chat")
     }
   }
 
@@ -360,24 +363,26 @@ export default function OnboardingPage() {
           transition={{ duration: 0.5 }}
           className="mb-8 flex flex-col items-center"
         >
-          <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#6D4BFF]/15">
-            <Sparkles className="h-7 w-7 text-[#8B5CFF]" />
-            <div
-              className="absolute inset-0 rounded-2xl"
+          <Link href="/" className="flex flex-col items-center">
+            <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#6D4BFF]/15">
+              <Sparkles className="h-7 w-7 text-[#8B5CFF]" />
+              <div
+                className="absolute inset-0 rounded-2xl"
+                style={{
+                  boxShadow: "0 0 30px rgba(109,75,255,0.25)",
+                }}
+                aria-hidden="true"
+              />
+            </div>
+            <h1
+              className="text-2xl font-bold tracking-tight text-foreground"
               style={{
-                boxShadow: "0 0 30px rgba(109,75,255,0.25)",
+                fontFamily: "var(--font-space-grotesk, var(--font-sans))",
               }}
-              aria-hidden="true"
-            />
-          </div>
-          <h1
-            className="text-2xl font-bold tracking-tight text-foreground"
-            style={{
-              fontFamily: "var(--font-space-grotesk, var(--font-sans))",
-            }}
-          >
-            Cosmic AI
-          </h1>
+            >
+              Cosmic AI
+            </h1>
+          </Link>
         </motion.div>
 
         {/* Step indicator */}

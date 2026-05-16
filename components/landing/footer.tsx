@@ -3,9 +3,23 @@
 import { Sparkles } from "lucide-react"
 
 const footerLinks = {
-  Product: ["Agents", "How It Works", "Pricing", "FAQ"],
-  Company: ["About", "Blog", "Careers", "Press"],
-  Legal: ["Privacy Policy", "Terms of Service", "Cookie Policy"],
+  Product: [
+    { label: "Agents", href: "/#agents" },
+    { label: "How It Works", href: "/#how-it-works" },
+    { label: "Pricing", href: "/#pricing" },
+    { label: "FAQ", href: "/#faq" },
+  ],
+  Company: [
+    { label: "About", href: "#" },
+    { label: "Blog", href: "#" },
+    { label: "Careers", href: "#" },
+    { label: "Press", href: "#" },
+  ],
+  Legal: [
+    { label: "Privacy Policy", href: "#" },
+    { label: "Terms of Service", href: "#" },
+    { label: "Cookie Policy", href: "#" },
+  ],
 }
 
 export function Footer() {
@@ -15,7 +29,7 @@ export function Footer() {
         <div className="grid gap-12 md:grid-cols-2 lg:grid-cols-5">
           {/* Brand */}
           <div className="lg:col-span-2">
-            <a href="#" className="mb-5 inline-flex items-center gap-2">
+            <a href="/" className="mb-5 inline-flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#6D4BFF] to-[#D66BFF]">
                 <Sparkles className="h-4 w-4 text-[#F5F2FF]" />
               </div>
@@ -54,12 +68,12 @@ export function Footer() {
               </h4>
               <ul className="space-y-3">
                 {links.map((link) => (
-                  <li key={link}>
+                  <li key={link.label}>
                     <a
-                      href="#"
+                      href={link.href}
                       className="text-sm text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
                     >
-                      {link}
+                      {link.label}
                     </a>
                   </li>
                 ))}

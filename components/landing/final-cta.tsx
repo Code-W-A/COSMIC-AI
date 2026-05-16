@@ -35,7 +35,7 @@ export function FinalCTA() {
 
             <div className="mt-10">
               <a
-                href="#"
+                href="/onboarding"
                 className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-10 py-4 text-base font-semibold text-[#F5F2FF] transition-all hover:shadow-xl hover:shadow-[#6D4BFF]/30"
               >
                 Start Free Reading
