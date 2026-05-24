@@ -1,6 +1,15 @@
 import type { BillingProfileDocument, UserDocument } from "@/types/user"
 
 import type { BillingProfileInput, BillingProfilePayload } from "@/types/billing"
+import {
+  BUCHAREST_SECTORS,
+  ROMANIA_COUNTIES,
+  canonicalizeRomaniaCity,
+  canonicalizeRomaniaCounty,
+  isBucharestCounty,
+  isRomaniaCountry,
+  normalizeCountryValue,
+} from "@/lib/billing/address"
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -13,13 +22,38 @@ export function validateBillingProfileInput(body: Record<string, unknown>): Bill
   const email = clean(body.email).toLowerCase()
   const phone = clean(body.phone)
   const addressLine1 = clean(body.addressLine1)
-  const city = clean(body.city)
-  const county = clean(body.county)
-  const country = clean(body.country)
+  const countryRaw = clean(body.country)
+  const countyRaw = clean(body.county)
+  const cityRaw = clean(body.city)
   const postalCode = clean(body.postalCode)
 
   if (!fullName || !emailPattern.test(email)) return null
-  if (!phone || !addressLine1 || !city || !county || !country || !postalCode) return null
+  if (!phone || !addressLine1 || !cityRaw || !countyRaw || !countryRaw || !postalCode) return null
+
+  const country = normalizeCountryValue(countryRaw)
+  let county = countyRaw
+  let city = cityRaw
+
+  if (isRomaniaCountry(country)) {
+    county = canonicalizeRomaniaCounty(countyRaw)
+    const normalizedCounty = county.toLowerCase()
+
+    const isAllowedCounty = ROMANIA_COUNTIES.some(
+      (knownCounty) => knownCounty.toLowerCase() === normalizedCounty
+    )
+    if (!isAllowedCounty) return null
+
+    city = canonicalizeRomaniaCity(county, cityRaw)
+
+    if (isBucharestCounty(county)) {
+      const isAllowedSector = BUCHAREST_SECTORS.some(
+        (sector) => sector.toLowerCase() === city.toLowerCase()
+      )
+      if (!isAllowedSector) return null
+    } else if (!city.trim()) {
+      return null
+    }
+  }
 
   return {
     type: "individual",

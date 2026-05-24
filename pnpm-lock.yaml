@@ -3,6 +3,12 @@ lockfileVersion: '9.0'
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
+  strictDepBuilds: false
+  onlyBuiltDependencies:
+    - '@firebase/util@1.15.1'
+    - protobufjs@7.5.8
+    - sharp@0.34.5
+    - unrs-resolver@1.11.1
 
 importers:
 

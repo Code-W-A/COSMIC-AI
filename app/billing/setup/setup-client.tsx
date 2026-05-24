@@ -7,16 +7,19 @@ import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react"
 
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { ApiClientError, apiFetch } from "@/lib/api/client"
+import {
+  BUCHAREST_SECTORS,
+  ROMANIA_COUNTIES,
+  getCountryOptions,
+  isBucharestCounty,
+  isRomaniaCountry,
+  normalizeCountryValue,
+} from "@/lib/billing/address"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 import type { BillingProfilePayload, BillingProfileResponse } from "@/types/billing"
 import type { BillingInterval, CheckoutType, PaidSubscriptionPlan, ReportSku } from "@/types/subscription"
 
 const paidPlans: PaidSubscriptionPlan[] = ["premium", "cosmic_plus"]
-
-const defaultCountryByLocale: Record<"ro" | "en", string> = {
-  ro: "România",
-  en: "Romania",
-}
 
 const emptyForm: BillingProfilePayload = {
   type: "individual",
@@ -108,13 +111,16 @@ export function BillingSetupClientPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
+  const countryOptions = useMemo(() => getCountryOptions(locale), [locale])
+  const isRomaniaSelected = isRomaniaCountry(form.country)
+  const isBucharestSelected = isRomaniaSelected && isBucharestCounty(form.county)
 
   useEffect(() => {
     setForm((current) => {
       if (current.country.trim().length > 0) return current
       return {
         ...current,
-        country: defaultCountryByLocale[isRo ? "ro" : "en"],
+        country: "Romania",
       }
     })
   }, [isRo])
@@ -126,7 +132,11 @@ export function BillingSetupClientPage() {
       .then((payload) => {
         if (!active) return
         if (payload.profile) {
-          setForm(payload.profile)
+          setForm((current) => ({
+            ...current,
+            ...payload.profile,
+            country: normalizeCountryValue(payload.profile.country),
+          }))
         }
       })
       .catch((profileError) => {
@@ -146,10 +156,30 @@ export function BillingSetupClientPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [isRo])
 
   function setField(field: EditableField, value: string) {
     setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function setCountry(value: string) {
+    setForm((current) => {
+      const nextCountry = value
+      return {
+        ...current,
+        country: nextCountry,
+        county: "",
+        city: "",
+      }
+    })
+  }
+
+  function setCounty(value: string) {
+    setForm((current) => ({
+      ...current,
+      county: value,
+      city: "",
+    }))
   }
 
   async function continueToCheckout(request: NextCheckoutRequest) {
@@ -289,38 +319,77 @@ export function BillingSetupClientPage() {
 
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-foreground">
-                  {isRo ? "Oraș" : "City"}
+                  {isRo ? "Județ / State" : "County / State"}
                 </span>
-                <input
-                  required
-                  value={form.city}
-                  onChange={(event) => setField("city", event.target.value)}
-                  className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
-                />
+                {isRomaniaSelected ? (
+                  <select
+                    required
+                    value={form.county}
+                    onChange={(event) => setCounty(event.target.value)}
+                    className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
+                  >
+                    <option value="">{isRo ? "Selectează județul" : "Select county"}</option>
+                    {ROMANIA_COUNTIES.map((county) => (
+                      <option key={county} value={county}>
+                        {county}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    required
+                    value={form.county}
+                    onChange={(event) => setField("county", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
+                  />
+                )}
               </label>
 
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-foreground">
-                  {isRo ? "Județ" : "County"}
+                  {isRo ? "Oraș" : "City"}
                 </span>
-                <input
-                  required
-                  value={form.county}
-                  onChange={(event) => setField("county", event.target.value)}
-                  className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
-                />
+                {isBucharestSelected ? (
+                  <select
+                    required
+                    value={form.city}
+                    onChange={(event) => setField("city", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
+                  >
+                    <option value="">{isRo ? "Selectează sectorul" : "Select sector"}</option>
+                    {BUCHAREST_SECTORS.map((sector) => (
+                      <option key={sector} value={sector}>
+                        {sector}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    required
+                    value={form.city}
+                    onChange={(event) => setField("city", event.target.value)}
+                    className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
+                  />
+                )}
               </label>
 
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-foreground">
                   {isRo ? "Țară" : "Country"}
                 </span>
-                <input
+                <select
                   required
                   value={form.country}
-                  onChange={(event) => setField("country", event.target.value)}
+                  onChange={(event) => setCountry(event.target.value)}
                   className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
-                />
+                >
+                  <option value="">{isRo ? "Selectează țara" : "Select country"}</option>
+                  {countryOptions.map((country) => (
+                    <option key={country.code} value={country.value}>
+                      {country.label}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="block">
