@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Sparkles } from "lucide-react"
+import { AppLogo } from "@/components/branding/app-logo"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 
 const footerLinks = {
@@ -58,9 +58,7 @@ export function Footer() {
           {/* Brand */}
           <div className="lg:col-span-2">
             <Link href={localizedPath("/")} className="mb-5 inline-flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#6D4BFF] to-[#D66BFF]">
-                <Sparkles className="h-4 w-4 text-[#F5F2FF]" />
-              </div>
+              <AppLogo size={32} className="ring-1 ring-white/20" />
               <span className="text-lg font-bold text-[#F5F2FF] tracking-tight">
                 Cosmic AI
               </span>

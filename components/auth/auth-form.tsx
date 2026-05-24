@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowRight, Sparkles } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 
+import { AppLogo } from "@/components/branding/app-logo"
 import { resolvePostAuthRoute } from "@/lib/auth/resolvePostAuthRoute"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { loginWithEmail, loginWithGoogle, registerOrLoginWithGoogle, registerWithEmail } from "@/lib/firebase/auth"
@@ -105,9 +106,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           <LanguageSwitcher />
         </div>
         <Link href={localizedPath("/")} className="mb-8 flex flex-col items-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#6D4BFF]/15">
-            <Sparkles className="h-7 w-7 text-[#8B5CFF]" />
-          </div>
+          <AppLogo size={56} className="mb-4 ring-1 ring-white/20 shadow-[0_0_30px_rgba(109,75,255,0.25)]" />
           <span className="text-2xl font-bold text-foreground">Cosmic AI</span>
         </Link>
 

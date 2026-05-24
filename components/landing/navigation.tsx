@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { Menu, X, Sparkles } from "lucide-react"
+import { Menu, X } from "lucide-react"
+import { AppLogo } from "@/components/branding/app-logo"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 
@@ -40,9 +41,7 @@ export function Navigation() {
     >
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
         <Link href={homeHref} className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#6D4BFF] to-[#D66BFF]">
-            <Sparkles className="h-4 w-4 text-[#F5F2FF]" />
-          </div>
+          <AppLogo size={32} className="ring-1 ring-white/20" />
           <span className="text-lg font-bold text-[#F5F2FF] tracking-tight">
             Cosmic AI
           </span>

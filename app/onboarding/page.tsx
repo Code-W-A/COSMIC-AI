@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import {
-  Sparkles,
   User,
   Calendar,
   Clock,
   MapPin,
   Compass,
   ArrowRight,
+  Sparkles,
   Sun,
   Moon,
   Heart,
@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { AuthGuard } from "@/components/auth/auth-guard"
+import { AppLogo } from "@/components/branding/app-logo"
 import { apiFetch } from "@/lib/api/client"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 import {
@@ -528,16 +529,10 @@ export default function OnboardingPage() {
           className="mb-8 flex flex-col items-center"
         >
           <Link href={localizedPath("/")} className="flex flex-col items-center">
-            <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#6D4BFF]/15">
-              <Sparkles className="h-7 w-7 text-[#8B5CFF]" />
-              <div
-                className="absolute inset-0 rounded-2xl"
-                style={{
-                  boxShadow: "0 0 30px rgba(109,75,255,0.25)",
-                }}
-                aria-hidden="true"
-              />
-            </div>
+            <AppLogo
+              size={56}
+              className="mb-4 ring-1 ring-white/20 shadow-[0_0_30px_rgba(109,75,255,0.25)]"
+            />
             <h1
               className="text-2xl font-bold tracking-tight text-foreground"
               style={{

@@ -19,6 +19,7 @@ import {
 
 import { AgentAvatar } from "@/components/agents/agent-avatar"
 import { AuthGuard } from "@/components/auth/auth-guard"
+import { AppLogo } from "@/components/branding/app-logo"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { ApiClientError, apiFetch } from "@/lib/api/client"
 import { agentAvatarCatalog } from "@/lib/agents/avatar-catalog"
@@ -469,9 +470,7 @@ export default function CosmicChatPage() {
     <>
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-4">
         <Link href={localizedPath("/")} className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[rgba(109,75,255,0.15)]">
-            <Sparkles className="h-4 w-4 text-cosmic-violet" />
-          </div>
+          <AppLogo size={32} className="ring-1 ring-white/20" />
           <span className="text-sm font-semibold text-foreground">Cosmic AI</span>
         </Link>
         <div className="flex items-center gap-2">

@@ -15,6 +15,9 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
+  metadataBase: process.env.NEXT_PUBLIC_APP_URL
+    ? new URL(process.env.NEXT_PUBLIC_APP_URL)
+    : new URL('http://localhost:3000'),
   title: 'Cosmic AI — Your Personal Astrology AI Agent',
   description:
     'Ask questions about love, purpose, compatibility, and your birth chart — and receive personalized answers powered by astrology data and AI.',
@@ -23,9 +26,30 @@ export const metadata: Metadata = {
     icon: [
       { url: '/icon-light-32x32.png', media: '(prefers-color-scheme: light)' },
       { url: '/icon-dark-32x32.png', media: '(prefers-color-scheme: dark)' },
-      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
     apple: '/apple-icon.png',
+  },
+  openGraph: {
+    title: 'Cosmic AI — Your Personal Astrology AI Agent',
+    description:
+      'Ask questions about love, purpose, compatibility, and your birth chart — and receive personalized answers powered by astrology data and AI.',
+    images: [
+      {
+        url: '/branding/logo-new.png',
+        width: 512,
+        height: 512,
+        alt: 'Cosmic AI logo',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Cosmic AI — Your Personal Astrology AI Agent',
+    description:
+      'Ask questions about love, purpose, compatibility, and your birth chart — and receive personalized answers powered by astrology data and AI.',
+    images: ['/branding/logo-new.png'],
   },
 }
 
