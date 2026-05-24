@@ -11,7 +11,6 @@ import {
   saveCompatibilityData,
 } from "@/lib/agents/context"
 import { generateAgentResponse } from "@/lib/agents/openai"
-import { buildMissingPartnerResponse } from "@/lib/agents/response-format"
 import type { AgentStructuredResponse } from "@/lib/agents/types"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { getCompatibilityData } from "@/lib/divineapi/compatibility"
@@ -32,6 +31,11 @@ import { incrementUsageForUser, UsageUserMissingError } from "@/lib/subscription
 import { isAgentType } from "@/types/agent"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { DivineApiHttpError } from "@/lib/divineapi/client"
+import {
+  getAgentInputPolicyId,
+  getPartnerInputCompleteness,
+  getProfileInputCompleteness,
+} from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -156,6 +160,16 @@ export async function POST(request: Request) {
       )
     }
 
+    const policyId = getAgentInputPolicyId(agentType)
+    const profileCompleteness = getProfileInputCompleteness(profile, policyId)
+    if (!profileCompleteness.isComplete) {
+      return errorResponse(
+        "profile_incomplete",
+        "Your profile is incomplete for this analysis. Please complete your birth details first.",
+        400
+      )
+    }
+
     const natal = await ensureNatalChart(user.uid, profile, locale)
     let daily: DailyHoroscopeData | undefined
     let compatibility: CompatibilityData | undefined
@@ -178,23 +192,44 @@ export async function POST(request: Request) {
     }
 
     if (agentType === "compatibility") {
+      const partnerCompleteness = getPartnerInputCompleteness(
+        body.partner as {
+          birthDate?: string
+          birthTime?: string
+          birthPlace?: string
+          sexAtBirth?: string
+        } | null,
+        "astrology_compatibility"
+      )
+      if (!partnerCompleteness.isComplete) {
+        return errorResponse(
+          "compatibility_partner_incomplete",
+          "Partner birth date, birth time, birth place, and sex at birth are required.",
+          400
+        )
+      }
+
       const partner = parsePartnerBirthDetails(body.partner)
 
       if (!partner) {
-        aiResponse = buildMissingPartnerResponse()
-      } else {
-        compatibility = await getCompatibilityData({
-          userNatal: natal,
-          partnerBirthDetails: partner,
-          userBirthDetails: profileToBirthDetails(profile),
-          language: locale,
-        })
-        await saveCompatibilityData({
-          uid: user.uid,
-          partner,
-          compatibility,
-        })
+        return errorResponse(
+          "compatibility_partner_incomplete",
+          "Partner birth date, birth time, birth place, and sex at birth are required.",
+          400
+        )
       }
+
+      compatibility = await getCompatibilityData({
+        userNatal: natal,
+        partnerBirthDetails: partner,
+        userBirthDetails: profileToBirthDetails(profile),
+        language: locale,
+      })
+      await saveCompatibilityData({
+        uid: user.uid,
+        partner,
+        compatibility,
+      })
     }
 
     const context = buildAgentContext({

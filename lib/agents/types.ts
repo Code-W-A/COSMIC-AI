@@ -1,6 +1,7 @@
 import type { AgentType } from "@/types/agent"
 import type { CompatibilityData, DailyHoroscopeData, NatalChartData } from "@/lib/divineapi/types"
 import type { Locale } from "@/lib/i18n/locale"
+import type { AnalysisInputPolicyId, BirthInputField } from "@/lib/profile/input-policy"
 
 export type AgentCardType =
   | "natal_summary"
@@ -40,6 +41,15 @@ export interface AgentContext {
   profile: {
     name?: string
     mainFocus?: string
+    sexAtBirth?: "male" | "female"
+  }
+  inputPolicy: {
+    policyId: AnalysisInputPolicyId
+    requiredFields: BirthInputField[]
+  }
+  inputCompleteness: {
+    isComplete: boolean
+    missingFields: BirthInputField[]
   }
   natal?: NatalChartData
   daily?: DailyHoroscopeData

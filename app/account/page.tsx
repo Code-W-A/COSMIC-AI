@@ -9,7 +9,7 @@ import { AuthGuard } from "@/components/auth/auth-guard"
 import { apiFetch } from "@/lib/api/client"
 import { logout } from "@/lib/firebase/auth"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
-import type { MainFocus } from "@/types/user"
+import { isSexAtBirth, type MainFocus, type SexAtBirth } from "@/types/user"
 
 type ProfilePayload = {
   profile: {
@@ -17,6 +17,7 @@ type ProfilePayload = {
     birthDate: string
     birthTime: string
     birthPlace: string
+    sexAtBirth: SexAtBirth
     mainFocus: MainFocus
   } | null
 }
@@ -36,6 +37,7 @@ export default function AccountPage() {
     birthDate: "",
     birthTime: "",
     birthPlace: "",
+    sexAtBirth: "" as SexAtBirth | "",
     mainFocus: "love" as MainFocus,
   })
 
@@ -51,6 +53,9 @@ export default function AccountPage() {
             birthDate: payload.profile.birthDate ?? "",
             birthTime: payload.profile.birthTime ?? "",
             birthPlace: payload.profile.birthPlace ?? "",
+            sexAtBirth: isSexAtBirth(payload.profile.sexAtBirth)
+              ? payload.profile.sexAtBirth
+              : "",
             mainFocus: payload.profile.mainFocus ?? "love",
           })
         }
@@ -169,6 +174,7 @@ export default function AccountPage() {
                 <label className="text-sm text-muted-foreground">
                   {isRo ? "Ora nașterii" : "Birth time"}
                   <input
+                    required
                     type="time"
                     value={form.birthTime}
                     onChange={(event) => setForm((prev) => ({ ...prev, birthTime: event.target.value }))}
@@ -183,6 +189,27 @@ export default function AccountPage() {
                     onChange={(event) => setForm((prev) => ({ ...prev, birthPlace: event.target.value }))}
                     className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
                   />
+                </label>
+                <label className="text-sm text-muted-foreground">
+                  {isRo ? "Sex biologic" : "Sex at birth"}
+                  <select
+                    required
+                    value={form.sexAtBirth}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        sexAtBirth:
+                          event.target.value === "male" || event.target.value === "female"
+                            ? event.target.value
+                            : "",
+                      }))
+                    }
+                    className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
+                  >
+                    <option value="">{isRo ? "Selectează sexul biologic" : "Select sex at birth"}</option>
+                    <option value="male">{isRo ? "Masculin" : "Male"}</option>
+                    <option value="female">{isRo ? "Feminin" : "Female"}</option>
+                  </select>
                 </label>
                 <label className="text-sm text-muted-foreground sm:col-span-2">
                   {isRo ? "Focus principal" : "Main focus"}

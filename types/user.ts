@@ -23,6 +23,13 @@ export function isMainFocus(value: unknown): value is MainFocus {
   return typeof value === "string" && mainFocusValues.includes(value as MainFocus)
 }
 
+export const sexAtBirthValues = ["male", "female"] as const
+export type SexAtBirth = (typeof sexAtBirthValues)[number]
+
+export function isSexAtBirth(value: unknown): value is SexAtBirth {
+  return typeof value === "string" && sexAtBirthValues.includes(value as SexAtBirth)
+}
+
 export interface UserDocument {
   uid: string
   email: string
@@ -65,6 +72,7 @@ export interface CosmicProfileDocument {
   birthDate: string
   birthTime: string
   birthPlace: string
+  sexAtBirth: SexAtBirth
   mainFocus: MainFocus
   createdAt: FirestoreTimestampLike
   updatedAt: FirestoreTimestampLike

@@ -38,6 +38,8 @@ function safeContextForPrompt(context: AgentContext) {
     agentType: context.agentType,
     userMessage: context.message,
     profile: context.profile,
+    inputPolicy: context.inputPolicy,
+    inputCompleteness: context.inputCompleteness,
     agentInstruction: getAgentInstruction(context.agentType),
     natalSummary: context.natal?.summary,
     dailyHoroscope: context.daily

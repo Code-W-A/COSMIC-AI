@@ -4,7 +4,7 @@ import { motion } from "framer-motion"
 import { User, Bot, MessageSquare } from "lucide-react"
 import { useTranslations } from "@/lib/i18n/client"
 
-const steps = [
+const defaultSteps = [
   {
     number: "01",
     icon: User,
@@ -55,7 +55,7 @@ export function HowItWorks() {
             "Primești răspunsuri personalizate pe baza datelor astrologice reale și AI.",
         },
       ]
-    : steps
+    : defaultSteps
   return (
     <section id="how-it-works" className="relative py-32">
       <div className="pointer-events-none absolute inset-0">

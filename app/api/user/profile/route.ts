@@ -4,7 +4,8 @@ import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/respo
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { getCosmicProfile, getCosmicProfileRef, getUserRef } from "@/lib/firebase/firestore"
 import { logError, logInfo } from "@/lib/logging/logger"
-import { isMainFocus } from "@/types/user"
+import { isAstrologyProfileComplete } from "@/lib/profile/input-policy"
+import { isMainFocus, isSexAtBirth } from "@/types/user"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -29,14 +30,23 @@ function isValidIanaTimeZone(value: string) {
 function validateProfileBody(body: Record<string, unknown>) {
   const name = getTrimmedString(body.name)
   const birthDate = getTrimmedString(body.birthDate)
-  const birthTime = getTrimmedString(body.birthTime) ?? ""
+  const birthTime = getTrimmedString(body.birthTime)
   const birthPlace = getTrimmedString(body.birthPlace)
+  const sexAtBirth = getTrimmedString(body.sexAtBirth)
   const timezoneIanaRaw = getTrimmedString(body.timezoneIana)
   const timezoneOffsetNow = getOptionalNumber(body.timezoneOffsetNow)
   const timezoneOffsetAtBirth = getOptionalNumber(body.timezoneOffsetAtBirth)
   const mainFocus = body.mainFocus
 
-  if (!name || !birthDate || !birthPlace || !isMainFocus(mainFocus)) {
+  if (
+    !name ||
+    !birthDate ||
+    !birthTime ||
+    !birthPlace ||
+    !sexAtBirth ||
+    !isSexAtBirth(sexAtBirth) ||
+    !isMainFocus(mainFocus)
+  ) {
     return null
   }
 
@@ -48,6 +58,7 @@ function validateProfileBody(body: Record<string, unknown>) {
     birthDate,
     birthTime,
     birthPlace,
+    sexAtBirth,
     timezoneIana,
     timezoneOffsetNow,
     timezoneOffsetAtBirth,
@@ -62,7 +73,10 @@ export async function GET(request: Request) {
 
   try {
     const profile = await getCosmicProfile(user.uid)
-    return successResponse({ profile })
+    return successResponse({
+      profile,
+      profileComplete: isAstrologyProfileComplete(profile),
+    })
   } catch (error) {
     await logError("profile", "profile_fetch_failed", { uid: user.uid, error })
 
@@ -94,7 +108,7 @@ export async function POST(request: Request) {
   if (!profile) {
     return errorResponse(
       "invalid_profile",
-      "Name, birth date, birth place, and a valid main focus are required.",
+      "Name, birth date, birth time, birth place, sex at birth, and a valid main focus are required.",
       400
     )
   }

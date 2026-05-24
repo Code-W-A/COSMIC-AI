@@ -8,9 +8,9 @@ import type { BirthDetails, NatalChartData } from "@/lib/divineapi/types"
 import type { Locale } from "@/lib/i18n/locale"
 import { logError, logInfo } from "@/lib/logging/logger"
 
-export function birthDetailsToDateParts(birthDate: string, birthTime?: string) {
+export function birthDetailsToDateParts(birthDate: string, birthTime: string) {
   const [year = "", month = "", day = ""] = birthDate.split("-")
-  const [hour = "0", min = "0"] = (birthTime || "00:00").split(":")
+  const [hour = "0", min = "0"] = birthTime.split(":")
 
   return {
     day,
@@ -41,6 +41,7 @@ export function buildNatalChartPayload(birthDetails: BirthDetails, language?: Lo
     date: birthDetails.birthDate,
     time: birthDetails.birthTime,
     place: birthDetails.birthPlace,
+    gender: birthDetails.sexAtBirth,
     lat: birthDetails.latitude,
     lon: birthDetails.longitude,
     tzone: String(resolvedTimezone ?? config.DEFAULT_TZONE),

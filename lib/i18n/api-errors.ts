@@ -37,6 +37,18 @@ const apiErrorMessages: Record<string, Record<Locale, string>> = {
     en: "Please complete your cosmic profile first.",
     ro: "Te rugăm completează mai întâi profilul cosmic.",
   },
+  profile_incomplete: {
+    en: "Your profile is incomplete for this analysis.",
+    ro: "Profilul tău este incomplet pentru această analiză.",
+  },
+  compatibility_partner_incomplete: {
+    en: "Partner birth details are incomplete.",
+    ro: "Datele de naștere ale partenerului sunt incomplete.",
+  },
+  analysis_input_missing: {
+    en: "Required analysis input data is missing.",
+    ro: "Lipsesc date necesare pentru analiză.",
+  },
   invalid_profile: {
     en: "Profile data is invalid.",
     ro: "Datele profilului sunt invalide.",
@@ -78,8 +90,8 @@ const apiErrorMessages: Record<string, Record<Locale, string>> = {
     ro: "Nu am putut genera datele de compatibilitate.",
   },
   partner_birth_details_required: {
-    en: "Partner birth date and birth place are required.",
-    ro: "Sunt necesare data nașterii și locul nașterii partenerului.",
+    en: "Partner birth date, birth time, birth place, and sex at birth are required.",
+    ro: "Sunt necesare data, ora, locul nașterii și sexul biologic al partenerului.",
   },
   invalid_action: {
     en: "Only consume action is supported.",

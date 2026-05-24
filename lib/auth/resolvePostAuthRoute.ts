@@ -6,6 +6,7 @@ type LocalizedPathFn = (path: string) => string
 
 interface ProfileResponse {
   profile: unknown | null
+  profileComplete?: boolean
 }
 
 interface ResolvePostAuthRouteParams {
@@ -24,7 +25,11 @@ export async function resolvePostAuthRoute({
       method: "GET",
     })
 
-    return response.profile ? localizedPath("/chat") : localizedPath("/onboarding")
+    if (!response.profile || response.profileComplete === false) {
+      return localizedPath("/onboarding")
+    }
+
+    return localizedPath("/chat")
   } catch {
     // Prefer returning users to product usage when profile fetch fails.
     return localizedPath("/chat")

@@ -186,9 +186,14 @@ export default function CosmicChatPage() {
     Promise.all([
       fetchConversations(),
       apiFetch<{ success: true } & SubscriptionStatusResponse>("/api/subscription/status").catch(() => null),
+      apiFetch<{ success: true; profile: unknown | null; profileComplete?: boolean }>("/api/user/profile").catch(() => null),
     ])
-      .then(([conversationPayload, subscriptionPayload]) => {
+      .then(([conversationPayload, subscriptionPayload, profilePayload]) => {
         if (cancelled) return
+        if (!profilePayload?.profile || profilePayload.profileComplete === false) {
+          router.replace(localizedPath("/onboarding"))
+          return
+        }
         setConversations(conversationPayload.conversations ?? [])
         setNextConversationsCursor(conversationPayload.nextCursor ?? null)
         if (subscriptionPayload) {
@@ -208,7 +213,7 @@ export default function CosmicChatPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [localizedPath, router])
 
   useEffect(() => {
     if (activeConversationId || conversations.length === 0) return

@@ -21,6 +21,12 @@ import { toFirestoreData } from "@/lib/firebase/sanitize"
 import { logInfo } from "@/lib/logging/logger"
 import type { AgentContext, UsedAstrologyData } from "@/lib/agents/types"
 import {
+  getAgentInputPolicy,
+  getAgentInputPolicyId,
+  getPartnerInputCompleteness,
+  getProfileInputCompleteness,
+} from "@/lib/profile/input-policy"
+import {
   buildLocalDateKeyForOffset,
   buildLocalDateKeyForTimeZone,
   getDatePartsInTimeZone,
@@ -65,8 +71,9 @@ export function profileToBirthDetails(profile: CosmicProfileDocument): BirthDeta
   return {
     name: profile.name,
     birthDate: profile.birthDate,
-    birthTime: profile.birthTime || "00:00",
+    birthTime: profile.birthTime,
     birthPlace: profile.birthPlace,
+    sexAtBirth: profile.sexAtBirth,
     latitude: expanded.latitude,
     longitude: expanded.longitude,
     timezoneIana: expanded.timezoneIana,
@@ -81,16 +88,29 @@ export function profileToBirthDetails(profile: CosmicProfileDocument): BirthDeta
 export function parsePartnerBirthDetails(value: unknown): BirthDetails | null {
   const partner = toRecord(value)
   const birthDate = getOptionalString(partner.birthDate)
-  const birthTime = getOptionalString(partner.birthTime) ?? "00:00"
+  const birthTime = getOptionalString(partner.birthTime)
   const birthPlace = getOptionalString(partner.birthPlace)
+  const sexAtBirth = getOptionalString(partner.sexAtBirth)
+  const completeness = getPartnerInputCompleteness(
+    {
+      birthDate: birthDate ?? undefined,
+      birthTime: birthTime ?? undefined,
+      birthPlace: birthPlace ?? undefined,
+      sexAtBirth: sexAtBirth ?? undefined,
+    },
+    "astrology_compatibility"
+  )
 
-  if (!birthDate || !birthPlace) return null
+  if (!completeness.isComplete || !sexAtBirth || (sexAtBirth !== "male" && sexAtBirth !== "female")) {
+    return null
+  }
 
   return {
     name: getOptionalString(partner.name),
     birthDate,
     birthTime,
     birthPlace,
+    sexAtBirth,
     latitude: getOptionalNumber(partner.latitude),
     longitude: getOptionalNumber(partner.longitude),
     timezoneIana: getOptionalString(partner.timezoneIana),
@@ -296,6 +316,10 @@ export function buildAgentContext({
     compatibility: Boolean(compatibility),
   }
 
+  const policyId = getAgentInputPolicyId(agentType)
+  const policy = getAgentInputPolicy(agentType)
+  const inputCompleteness = getProfileInputCompleteness(profile, policyId)
+
   return {
     uid,
     locale,
@@ -304,7 +328,13 @@ export function buildAgentContext({
     profile: {
       name: profile.name,
       mainFocus: profile.mainFocus,
+      sexAtBirth: profile.sexAtBirth,
     },
+    inputPolicy: {
+      policyId,
+      requiredFields: policy.requiredFields,
+    },
+    inputCompleteness,
     natal,
     daily,
     compatibility,

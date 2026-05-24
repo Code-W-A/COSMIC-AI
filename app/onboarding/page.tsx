@@ -29,6 +29,12 @@ import {
   getCurrentSystemOffsetHours,
   getOffsetHoursForTimeZoneAtLocalDateTime,
 } from "@/lib/divineapi/timezone"
+import {
+  isMainFocus,
+  isSexAtBirth,
+  type MainFocus,
+  type SexAtBirth,
+} from "@/types/user"
 
 /* ─── Starfield Canvas ─── */
 function StarfieldCanvas() {
@@ -358,6 +364,7 @@ export default function OnboardingPage() {
   const [birthDate, setBirthDate] = useState("")
   const [birthTime, setBirthTime] = useState("")
   const [birthPlace, setBirthPlace] = useState("")
+  const [sexAtBirth, setSexAtBirth] = useState<SexAtBirth | "">("")
   const [focus, setFocus] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
@@ -367,13 +374,32 @@ export default function OnboardingPage() {
 
     async function guardExistingUsersFromOnboarding() {
       try {
-        const response = await apiFetch<{ profile: unknown | null }>("/api/user/profile", {
+        const response = await apiFetch<{
+          profile: {
+            name?: string
+            birthDate?: string
+            birthTime?: string
+            birthPlace?: string
+            sexAtBirth?: string
+            mainFocus?: string
+          } | null
+          profileComplete?: boolean
+        }>("/api/user/profile", {
           method: "GET",
         })
 
         if (cancelled) return
 
         if (response.profile) {
+          if (typeof response.profile.name === "string") setName(response.profile.name)
+          if (typeof response.profile.birthDate === "string") setBirthDate(response.profile.birthDate)
+          if (typeof response.profile.birthTime === "string") setBirthTime(response.profile.birthTime)
+          if (typeof response.profile.birthPlace === "string") setBirthPlace(response.profile.birthPlace)
+          if (isSexAtBirth(response.profile.sexAtBirth)) setSexAtBirth(response.profile.sexAtBirth)
+          if (isMainFocus(response.profile.mainFocus)) setFocus(response.profile.mainFocus)
+        }
+
+        if (response.profile && response.profileComplete) {
           router.replace(localizedPath("/chat"))
           return
         }
@@ -395,7 +421,14 @@ export default function OnboardingPage() {
 
   function canProceed() {
     if (step === 1) return name.trim().length > 0
-    if (step === 2) return birthDate.trim().length > 0 && birthPlace.trim().length > 0
+    if (step === 2) {
+      return (
+        birthDate.trim().length > 0 &&
+        birthTime.trim().length > 0 &&
+        birthPlace.trim().length > 0 &&
+        sexAtBirth.trim().length > 0
+      )
+    }
     if (step === 3) return focus.length > 0
     return false
   }
@@ -412,10 +445,10 @@ export default function OnboardingPage() {
         const timezoneIana = detectBrowserTimezone()
         const timezoneOffsetNow = getCurrentSystemOffsetHours()
         const timezoneOffsetAtBirth =
-          timezoneIana && birthDate
+          timezoneIana && birthDate && birthTime
             ? getOffsetHoursForTimeZoneAtLocalDateTime(timezoneIana, {
                 date: birthDate,
-                time: birthTime || "00:00",
+                time: birthTime,
               })
             : undefined
 
@@ -426,6 +459,7 @@ export default function OnboardingPage() {
             birthDate,
             birthTime,
             birthPlace,
+            sexAtBirth,
             timezoneIana,
             timezoneOffsetNow,
             timezoneOffsetAtBirth,
@@ -615,9 +649,7 @@ export default function OnboardingPage() {
                       label={isRo ? "Ora nașterii" : "Birth Time"}
                       icon={Clock}
                       type="time"
-                      placeholder={
-                        isRo ? "Introdu ora nașterii (opțional)" : "Enter your birth time (optional)"
-                      }
+                      placeholder={isRo ? "Introdu ora nașterii" : "Enter your birth time"}
                       value={birthTime}
                       onChange={setBirthTime}
                       delay={0.1}
@@ -630,6 +662,30 @@ export default function OnboardingPage() {
                       onChange={setBirthPlace}
                       delay={0.15}
                     />
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.2 }}
+                    >
+                      <label className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+                        <User className="h-3.5 w-3.5 text-[#B69CFF]" />
+                        {isRo ? "Sex biologic" : "Sex at birth"}
+                      </label>
+                      <select
+                        value={sexAtBirth}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          setSexAtBirth(value === "male" || value === "female" ? value : "")
+                        }}
+                        className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3.5 text-sm text-foreground transition-all hover:border-[#6D4BFF]/30 hover:bg-[rgba(255,255,255,0.06)] focus:border-[#6D4BFF]/50 focus:bg-[rgba(255,255,255,0.06)] focus:outline-none focus:ring-1 focus:ring-[#6D4BFF]/30"
+                      >
+                        <option value="">
+                          {isRo ? "Selectează sexul biologic" : "Select sex at birth"}
+                        </option>
+                        <option value="male">{isRo ? "Masculin" : "Male"}</option>
+                        <option value="female">{isRo ? "Feminin" : "Female"}</option>
+                      </select>
+                    </motion.div>
                   </div>
                 </motion.div>
               )}

@@ -8,6 +8,7 @@ import { getCosmicProfile } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError } from "@/lib/logging/logger"
 import { DivineApiHttpError } from "@/lib/divineapi/client"
+import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -25,6 +26,14 @@ export async function GET(request: Request) {
       return errorResponse(
         "cosmic_profile_missing",
         "Please complete your cosmic profile first.",
+        400
+      )
+    }
+    const profileCompleteness = getProfileInputCompleteness(profile, "astrology_natal")
+    if (!profileCompleteness.isComplete) {
+      return errorResponse(
+        "profile_incomplete",
+        "Your profile is incomplete for this analysis. Please complete your birth details first.",
         400
       )
     }

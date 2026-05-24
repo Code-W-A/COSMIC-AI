@@ -11,6 +11,10 @@ import { getCosmicProfile } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError } from "@/lib/logging/logger"
 import { DivineApiHttpError } from "@/lib/divineapi/client"
+import {
+  getPartnerInputCompleteness,
+  getProfileInputCompleteness,
+} from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -29,12 +33,27 @@ export async function POST(request: Request) {
     return errorResponse("invalid_json", "Request body must be valid JSON.", 400)
   }
 
+  const partnerCompleteness = getPartnerInputCompleteness(
+    body.partner as {
+      birthDate?: string
+      birthTime?: string
+      birthPlace?: string
+      sexAtBirth?: string
+    } | null,
+    "astrology_compatibility"
+  )
+  if (!partnerCompleteness.isComplete) {
+    return errorResponse(
+      "compatibility_partner_incomplete",
+      "Partner birth date, birth time, birth place, and sex at birth are required.",
+      400
+    )
+  }
   const partner = parsePartnerBirthDetails(body.partner)
-
   if (!partner) {
     return errorResponse(
-      "partner_birth_details_required",
-      "Partner birth date and birth place are required.",
+      "compatibility_partner_incomplete",
+      "Partner birth date, birth time, birth place, and sex at birth are required.",
       400
     )
   }
@@ -46,6 +65,14 @@ export async function POST(request: Request) {
       return errorResponse(
         "cosmic_profile_missing",
         "Please complete your cosmic profile first.",
+        400
+      )
+    }
+    const profileCompleteness = getProfileInputCompleteness(profile, "astrology_compatibility")
+    if (!profileCompleteness.isComplete) {
+      return errorResponse(
+        "profile_incomplete",
+        "Your profile is incomplete for this analysis. Please complete your birth details first.",
         400
       )
     }
