@@ -41,7 +41,7 @@ export function useTranslations() {
 
 export function useLocalizedPath() {
   const locale = useCurrentLocale()
-  return (path: string) => withLocalePath(path, locale)
+  return useMemo(() => (path: string) => withLocalePath(path, locale), [locale])
 }
 
 export function useLocaleSwitcher() {
