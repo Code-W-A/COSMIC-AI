@@ -117,7 +117,7 @@ function TypingIndicator() {
 export default function CosmicChatPage() {
   const router = useRouter()
   const localizedPath = useLocalizedPath()
-  const { locale } = useTranslations()
+  const { locale, t } = useTranslations()
   const isRo = locale === "ro"
 
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
@@ -332,14 +332,12 @@ export default function CosmicChatPage() {
             id: `local-cta-${Date.now()}`,
             role: "assistant",
             content:
-              isRo
-                ? "Pentru un raport relațional complet, deblochează one-off report (29 RON)."
-                : "If you want a full relationship deep report, unlock the one-off report (29 RON).",
+              t("chat.report.ctaPrompt"),
             agent: "Cosmic AI",
             agentType: activeAgent,
             ctas: [
               {
-                label: isRo ? "Deblochează raportul (29 RON)" : "Unlock report (29 RON)",
+                label: t("chat.report.ctaButton"),
                 href: localizedPath("/report"),
                 variant: "primary",
               },
@@ -376,7 +374,7 @@ export default function CosmicChatPage() {
                 variant: "primary",
               },
               {
-                label: isRo ? "Raport one-off (29 RON)" : "One-off report (29 RON)",
+                label: t("chat.report.limitCta"),
                 href: localizedPath("/report"),
                 variant: "secondary",
               },

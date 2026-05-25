@@ -7,6 +7,7 @@ import { Check, Loader2, Sparkles } from "lucide-react"
 
 import { ApiClientError, apiFetch } from "@/lib/api/client"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
+import { getSubscriptionDisplayPrice } from "@/lib/pricing/display"
 import type { BillingInterval } from "@/types/subscription"
 
 const basePlans = [
@@ -27,8 +28,8 @@ const basePlans = [
   {
     name: "Premium",
     plan: "premium" as const,
-    monthlyPrice: "49 RON",
-    annualPrice: "399 RON",
+    monthlyPrice: "34.99 RON",
+    annualPrice: "349 RON",
     monthlyPeriod: "/month",
     annualPeriod: "/year",
     description: "Unlock your full cosmic potential",
@@ -47,11 +48,12 @@ const basePlans = [
 export function PricingSection() {
   const router = useRouter()
   const localizedPath = useLocalizedPath()
-  const { locale } = useTranslations()
+  const { locale, t } = useTranslations()
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly")
   const [error, setError] = useState("")
   const isRo = locale === "ro"
+  const subscriptionDisplayPrice = getSubscriptionDisplayPrice(billingInterval)
   const plans = isRo
     ? [
         {
@@ -71,8 +73,8 @@ export function PricingSection() {
         {
           name: "Premium",
           plan: "premium" as const,
-          monthlyPrice: "49 RON",
-          annualPrice: "399 RON",
+          monthlyPrice: "34.99 RON",
+          annualPrice: "349 RON",
           monthlyPeriod: "/lună",
           annualPeriod: "/an",
           description: "Deblochează tot potențialul cosmic",
@@ -232,9 +234,7 @@ export function PricingSection() {
                 <div className="mt-6 flex items-baseline gap-1">
                   <span className="text-4xl font-bold text-[#F5F2FF]">
                     {"monthlyPrice" in plan
-                      ? billingInterval === "annual"
-                        ? plan.annualPrice
-                        : plan.monthlyPrice
+                      ? subscriptionDisplayPrice.current
                       : plan.price}
                   </span>
                   <span className="text-sm text-[#B8B2D9]">
@@ -245,9 +245,15 @@ export function PricingSection() {
                       : plan.period}
                   </span>
                 </div>
+                {"monthlyPrice" in plan && (
+                  <p className="mt-2 text-sm text-[#B8B2D9]">
+                    <span className="line-through opacity-70">{subscriptionDisplayPrice.previous}</span>{" "}
+                    <span className="font-medium text-[#B69CFF]">{t("pricing.promo.temporary")}</span>
+                  </p>
+                )}
                 {"monthlyPrice" in plan && billingInterval === "annual" && (
                   <p className="mt-2 text-xs text-[#B69CFF]">
-                    {isRo ? "Economisești cu facturare anuală" : "Save with annual billing"}
+                    {t("pricing.promo.annual")}
                   </p>
                 )}
 

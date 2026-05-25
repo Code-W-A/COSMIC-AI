@@ -57,6 +57,12 @@ export const messages: Record<Locale, MessageMap> = {
     "report.buy": "Buy report for 29 RON",
     "report.generatedNotice":
       "Report generation token consumed. Report rendering pipeline is coming next.",
+    "pricing.promo.temporary": "Temporary offer",
+    "pricing.promo.annual": "Save even more with annual billing",
+    "chat.report.ctaPrompt":
+      "If you want a full relationship deep report, unlock the one-off report (29 RON).",
+    "chat.report.ctaButton": "Unlock report (29 RON)",
+    "chat.report.limitCta": "One-off report (29 RON)",
   },
   ro: {
     "common.loading": "Se încarcă...",
@@ -112,6 +118,12 @@ export const messages: Record<Locale, MessageMap> = {
     "report.buy": "Cumpără raportul cu 29 RON",
     "report.generatedNotice":
       "Tokenul de generare raport a fost consumat. Pipeline-ul de randare urmează.",
+    "pricing.promo.temporary": "Ofertă temporară",
+    "pricing.promo.annual": "Economisești și mai mult cu facturare anuală",
+    "chat.report.ctaPrompt":
+      "Pentru un raport relațional complet, deblochează one-off report (29 RON).",
+    "chat.report.ctaButton": "Deblochează raportul (29 RON)",
+    "chat.report.limitCta": "Raport one-off (29 RON)",
   },
 }
 
