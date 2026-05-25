@@ -23,8 +23,21 @@ import type {
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function getAppUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+function getAppUrl(request: Request) {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (envUrl) return envUrl
+
+  const forwardedProto = request.headers.get("x-forwarded-proto")
+  const forwardedHost = request.headers.get("x-forwarded-host")
+  const host = request.headers.get("host")
+  const baseHost = forwardedHost ?? host
+
+  if (baseHost) {
+    const proto = forwardedProto ?? (baseHost.includes("localhost") ? "http" : "https")
+    return `${proto}://${baseHost}`
+  }
+
+  return "http://localhost:3000"
 }
 
 type SubscriptionCheckoutRequest = {
@@ -179,7 +192,7 @@ export async function POST(request: Request) {
       })
     }
 
-    const appUrl = getAppUrl()
+    const appUrl = getAppUrl(request)
     const baseMetadata: Record<string, string> = {
       uid: user.uid,
       checkoutType: checkoutRequest.checkoutType,
