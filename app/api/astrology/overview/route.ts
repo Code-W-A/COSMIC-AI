@@ -13,6 +13,7 @@ import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+const INCLUDE_RAW_DIVINE = process.env.NODE_ENV !== "production"
 
 function toDateIso(value: unknown) {
   if (value instanceof Timestamp) return value.toDate().toISOString()
@@ -80,7 +81,7 @@ export async function GET(request: Request) {
         generated: Boolean(natalSummary),
         generatedAt: toDateIso(profile.natalChartGeneratedAt),
         summary: natalSummary,
-        raw: toRecord(profile.divineNatalRaw),
+        raw: INCLUDE_RAW_DIVINE ? toRecord(profile.divineNatalRaw) : null,
       },
       daily: {
         generated: Boolean(latestDaily),
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
             ? latestDaily.horoscopeData
             : null,
         categories: latestDaily ? toRecord(latestDaily.categories) : null,
-        raw: latestDaily ? toRecord(latestDaily.divineHoroscopeRaw) : null,
+        raw: INCLUDE_RAW_DIVINE && latestDaily ? toRecord(latestDaily.divineHoroscopeRaw) : null,
       },
       synastry: {
         generated: Boolean(latestCompatibility),
@@ -102,7 +103,10 @@ export async function GET(request: Request) {
             ? latestCompatibility.mode
             : null,
         summary: latestCompatibility ? toRecord(latestCompatibility.summary) : null,
-        raw: latestCompatibility ? toRecord(latestCompatibility.divineCompatibilityRaw) : null,
+        raw:
+          INCLUDE_RAW_DIVINE && latestCompatibility
+            ? toRecord(latestCompatibility.divineCompatibilityRaw)
+            : null,
         partner: latestPartner
           ? {
               id: String(latestPartner.id),

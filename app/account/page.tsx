@@ -159,7 +159,20 @@ type PartnerListPayload = {
 }
 
 type DivineDetailTab = "natal" | "daily" | "synastry"
-type AccountSectionTab = "divine" | "profile" | "readings"
+type AccountSectionTab =
+  | "overview"
+  | "cosmic_profile"
+  | "daily_guidance"
+  | "compatibility"
+  | "billing"
+type SubscriptionStatusPayload = {
+  subscriptionStatus: string
+  subscriptionPlan: "free" | "premium" | string
+  billingInterval: "monthly" | "annual" | null
+  currentPeriodEnd: string | null
+  cancelAtPeriodEnd: boolean
+  isPremium: boolean
+}
 const IS_DEV = process.env.NODE_ENV !== "production"
 
 export default function AccountPage() {
@@ -188,9 +201,12 @@ export default function AccountPage() {
   const [divineLoading, setDivineLoading] = useState(true)
   const [divineError, setDivineError] = useState("")
   const [divineTab, setDivineTab] = useState<DivineDetailTab>("natal")
-  const [activeSectionTab, setActiveSectionTab] = useState<AccountSectionTab>("divine")
+  const [activeSectionTab, setActiveSectionTab] = useState<AccountSectionTab>("overview")
   const [showRawDivine, setShowRawDivine] = useState(false)
   const [partners, setPartners] = useState<PartnerListPayload["partners"]>([])
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatusPayload | null>(
+    null
+  )
 
   const [actionLoading, setActionLoading] = useState({
     generateAll: false,
@@ -203,9 +219,9 @@ export default function AccountPage() {
     null
   )
 
-  const [synastryForm, setSynastryForm] = useState({
-    mode: "new" as "new" | "saved",
-    partnerId: "",
+  const [selectedPartnerId, setSelectedPartnerId] = useState("")
+  const [isAddingNewPartner, setIsAddingNewPartner] = useState(false)
+  const [newPartnerForm, setNewPartnerForm] = useState({
     name: "",
     birthDate: "",
     birthTime: "",
@@ -228,8 +244,8 @@ export default function AccountPage() {
     useState<ResolvedBirthLocation | null>(null)
 
   const selectedSavedPartner = useMemo(
-    () => partners.find((partner) => partner.id === synastryForm.partnerId) ?? null,
-    [partners, synastryForm.partnerId]
+    () => partners.find((partner) => partner.id === selectedPartnerId) ?? null,
+    [partners, selectedPartnerId]
   )
 
   useEffect(() => {
@@ -342,17 +358,18 @@ export default function AccountPage() {
       }
 
       if ((partnerPayload.partners ?? []).length > 0) {
-        setSynastryForm((prev) => ({
-          ...prev,
-          mode: prev.mode,
-          partnerId: prev.partnerId || partnerPayload.partners[0].id,
-        }))
+        setSelectedPartnerId((prev) => {
+          if (prev && partnerPayload.partners.some((partner) => partner.id === prev)) return prev
+          return partnerPayload.partners[0].id
+        })
+      } else {
+        setSelectedPartnerId("")
       }
     } catch (overviewError) {
       setDivineError(
         overviewError instanceof Error
           ? overviewError.message
-          : t("account.divine.loadError")
+          : t("account.insights.loadError")
       )
     } finally {
       setDivineLoading(false)
@@ -362,6 +379,24 @@ export default function AccountPage() {
   useEffect(() => {
     void loadDivineOverview()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+
+    apiFetch<{ success: true } & SubscriptionStatusPayload>("/api/subscription/status")
+      .then((payload) => {
+        if (!mounted) return
+        setSubscriptionStatus(payload)
+      })
+      .catch(() => {
+        if (!mounted) return
+        setSubscriptionStatus(null)
+      })
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
   function formatDate(value: string | null) {
@@ -388,6 +423,36 @@ export default function AccountPage() {
     }, 4500)
   }
 
+  function planLabel() {
+    if (!subscriptionStatus) return t("account.hero.planUnknown")
+    if (subscriptionStatus.subscriptionPlan !== "premium") return t("account.hero.planFree")
+
+    if (subscriptionStatus.billingInterval === "monthly") {
+      return t("account.hero.planPremiumMonthly")
+    }
+    if (subscriptionStatus.billingInterval === "annual") {
+      return t("account.hero.planPremiumAnnual")
+    }
+    return t("account.hero.planPremium")
+  }
+
+  function focusLabel(value: MainFocus | "") {
+    switch (value) {
+      case "love":
+        return t("account.focus.love")
+      case "compatibility":
+        return t("account.focus.compatibility")
+      case "self_discovery":
+        return t("account.focus.selfDiscovery")
+      case "career":
+        return t("account.focus.career")
+      case "daily_guidance":
+        return t("account.focus.dailyGuidance")
+      default:
+        return "—"
+    }
+  }
+
   async function runGenerateAll() {
     setActionBusy("generateAll", true)
     try {
@@ -399,7 +464,7 @@ export default function AccountPage() {
       await loadDivineOverview()
       setActionFeedback(
         "success",
-        t("account.divine.generateAll.success")
+        t("account.insights.generateAll.success")
       )
     } catch (generateError) {
       if (IS_DEV) console.error("[DivineAction] generate-all failed", generateError)
@@ -407,7 +472,7 @@ export default function AccountPage() {
         "error",
         generateError instanceof Error
           ? generateError.message
-          : t("account.divine.generateAll.error")
+          : t("account.insights.generateAll.error")
       )
     } finally {
       setActionBusy("generateAll", false)
@@ -467,10 +532,18 @@ export default function AccountPage() {
     }
   }
 
-  async function runSynastry() {
+  async function runSynastry(mode: "saved" | "new") {
     setActionBusy("synastry", true)
     try {
-      if (synastryForm.mode === "new" && !synastryResolvedLocation) {
+      if (mode === "saved" && !selectedPartnerId) {
+        throw new Error(
+          isRo
+            ? "Selectează un partener pentru a genera citirea relațională."
+            : "Select a partner to generate the relationship reading."
+        )
+      }
+
+      if (mode === "new" && !synastryResolvedLocation) {
         throw new Error(
           isRo
             ? "Selectează o locație validă din sugestii pentru partener."
@@ -479,27 +552,27 @@ export default function AccountPage() {
       }
 
       const payload =
-        synastryForm.mode === "saved" && synastryForm.partnerId
+        mode === "saved" && selectedPartnerId
           ? {
-              partnerId: synastryForm.partnerId,
+              partnerId: selectedPartnerId,
               savePartner: true,
               source: "account",
             }
           : {
               partner: {
-                name: synastryForm.name || undefined,
-                birthDate: synastryForm.birthDate,
-                birthTime: synastryForm.birthTime,
-                birthPlace: synastryResolvedLocation?.birthPlace ?? synastryForm.birthPlace,
+                name: newPartnerForm.name || undefined,
+                birthDate: newPartnerForm.birthDate,
+                birthTime: newPartnerForm.birthTime,
+                birthPlace: synastryResolvedLocation?.birthPlace ?? newPartnerForm.birthPlace,
                 birthPlacePlaceId: synastryResolvedLocation?.placeId,
                 latitude: synastryResolvedLocation?.latitude,
                 longitude: synastryResolvedLocation?.longitude,
                 timezoneIana: synastryResolvedLocation?.timezoneIana,
                 timezoneOffsetNow: synastryResolvedLocation?.timezoneOffsetNow,
                 timezoneOffsetAtBirth: synastryResolvedLocation?.timezoneOffsetAtBirth,
-                sexAtBirth: synastryForm.sexAtBirth,
+                sexAtBirth: newPartnerForm.sexAtBirth,
               },
-              savePartner: synastryForm.savePartner,
+              savePartner: newPartnerForm.savePartner,
               source: "account",
             }
 
@@ -509,9 +582,12 @@ export default function AccountPage() {
       })
       if (IS_DEV) {
         console.info("[DivineAction] synastry success", {
-          mode: synastryForm.mode,
-          partnerId: synastryForm.partnerId || null,
+          mode,
+          partnerId: mode === "saved" ? selectedPartnerId || null : null,
         })
+      }
+      if (mode === "new") {
+        setIsAddingNewPartner(false)
       }
       await loadDivineOverview()
       setActionFeedback(
@@ -521,8 +597,8 @@ export default function AccountPage() {
     } catch (synastryError) {
       if (IS_DEV) {
         console.error("[DivineAction] synastry failed", {
-          mode: synastryForm.mode,
-          partnerId: synastryForm.partnerId || null,
+          mode,
+          partnerId: mode === "saved" ? selectedPartnerId || null : null,
           error: synastryError,
         })
       }
@@ -635,6 +711,34 @@ export default function AccountPage() {
   const synastryPlacements = toDisplayRecord(synastryRawData?.synastry)
   const synastryP1 = toDisplayList(synastryPlacements?.p1)
   const synastryP2 = toDisplayList(synastryPlacements?.p2)
+  const hasSavedPartners = partners.length > 0
+  const hasCompatibilityReading = Boolean(divineOverview?.synastry.generated)
+  const compatibilityPartnerName =
+    divineOverview?.synastry.partner?.name ??
+    divineOverview?.synastry.partner?.birthPlace ??
+    "—"
+  const isSavedPartnerGenerateDisabled =
+    actionLoading.synastry || !divineOverview?.profileComplete || !selectedPartnerId
+  const isNewPartnerGenerateDisabled =
+    actionLoading.synastry ||
+    !divineOverview?.profileComplete ||
+    !newPartnerForm.birthDate ||
+    !newPartnerForm.birthTime ||
+    !newPartnerForm.birthPlace ||
+    !newPartnerForm.sexAtBirth ||
+    !synastryResolvedLocation
+
+  function resetNewPartnerForm() {
+    setSynastryResolvedLocation(null)
+    setNewPartnerForm({
+      name: "",
+      birthDate: "",
+      birthTime: "",
+      birthPlace: "",
+      sexAtBirth: "",
+      savePartner: true,
+    })
+  }
 
   return (
     <AuthGuard>
@@ -682,9 +786,11 @@ export default function AccountPage() {
 
           <div className="flex flex-wrap gap-2">
             {([
-              ["divine", t("account.tabs.divine")],
-              ["profile", t("account.tabs.profile")],
-              ["readings", t("account.tabs.readings")],
+              ["overview", t("account.tabs.overview")],
+              ["cosmic_profile", t("account.tabs.cosmicProfile")],
+              ["daily_guidance", t("account.tabs.dailyGuidance")],
+              ["compatibility", t("account.tabs.compatibility")],
+              ["billing", t("account.tabs.billing")],
             ] as Array<[AccountSectionTab, string]>).map(([tab, label]) => (
               <button
                 key={tab}
@@ -692,8 +798,8 @@ export default function AccountPage() {
                 onClick={() => setActiveSectionTab(tab)}
                 className={`rounded-full px-4 py-2 text-sm transition ${
                   activeSectionTab === tab
-                    ? "bg-[rgba(109,75,255,0.22)] text-foreground ring-1 ring-[rgba(109,75,255,0.5)]"
-                    : "border border-border bg-[rgba(255,255,255,0.03)] text-muted-foreground hover:text-foreground"
+                    ? "bg-[rgba(109,75,255,0.30)] text-foreground ring-1 ring-[rgba(139,92,255,0.72)]"
+                    : "border border-white/10 bg-[rgba(255,255,255,0.03)] text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {label}
@@ -701,612 +807,239 @@ export default function AccountPage() {
             ))}
           </div>
 
-          {activeSectionTab === "divine" && (
-            <section className="rounded-2xl border border-border bg-[rgba(255,255,255,0.03)] p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">
-                  {t("account.divine.title")}
-                </h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {t("account.divine.subtitle")}
-                </p>
+          {activeSectionTab === "overview" && (
+            <section className="space-y-5 rounded-3xl border border-white/10 bg-[radial-gradient(140%_130%_at_10%_0%,rgba(109,75,255,0.28),rgba(10,10,20,0.92)_55%)] p-6 shadow-[0_0_80px_rgba(109,75,255,0.16)]">
+              <div className="grid gap-4 md:grid-cols-4">
+                <article className="rounded-2xl border border-white/10 bg-black/25 p-4 md:col-span-2">
+                  <p className="text-xs uppercase tracking-[0.18em] text-cosmic-lavender">{t("account.hero.welcomeEyebrow")}</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-foreground">
+                    {t("account.hero.welcomeTitle")} {profile?.name || t("account.hero.traveler")}
+                  </h2>
+                  <p className="mt-2 text-sm text-muted-foreground">{t("account.hero.welcomeSubtitle")}</p>
+                </article>
+                <article className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.hero.currentPlan")}</p>
+                  <p className="mt-2 text-lg font-medium text-foreground">{planLabel()}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {subscriptionStatus?.currentPeriodEnd
+                      ? `${t("account.hero.nextRenewal")} ${formatDate(subscriptionStatus.currentPeriodEnd)}`
+                      : "—"}
+                  </p>
+                </article>
+                <article className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.hero.currentFocus")}</p>
+                  <p className="mt-2 text-lg font-medium text-foreground">{focusLabel(form.mainFocus)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{t("account.hero.focusHint")}</p>
+                </article>
               </div>
-              <button
-                type="button"
-                onClick={() => void runGenerateAll()}
-                disabled={actionLoading.generateAll}
-                className="rounded-lg border border-border px-4 py-2 text-sm text-foreground hover:bg-[rgba(255,255,255,0.05)] disabled:opacity-60"
-              >
-                {actionLoading.generateAll
-                  ? t("account.divine.generating")
-                  : t("account.divine.generateAll")}
-              </button>
-            </div>
 
-            {feedback && (
-              <p
-                className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
-                  feedback.tone === "success"
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-                    : "border-red-500/40 bg-red-500/10 text-red-200"
-                }`}
-              >
-                {feedback.text}
-              </p>
-            )}
+              <article className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.hero.lastReading")}</p>
+                {readingsLoading ? (
+                  <p className="mt-2 text-sm text-muted-foreground">{t("common.loading")}</p>
+                ) : readings.length === 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">{t("account.readings.empty")}</p>
+                ) : (
+                  <>
+                    <p className="mt-2 text-sm font-medium text-foreground">{readings[0]?.question || "—"}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{readings[0]?.answerPreview || "—"}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">{formatDate(readings[0]?.createdAt ?? null)}</p>
+                  </>
+                )}
+              </article>
 
-            {divineLoading ? (
-              <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t("account.divine.loading")}
-              </div>
-            ) : (
-              <>
-                {!divineOverview?.profileComplete && (
-                  <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-                    {t("account.divine.profileIncomplete")}
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">{t("account.insights.title")}</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">{t("account.insights.subtitle")}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void runGenerateAll()}
+                      disabled={actionLoading.generateAll}
+                      className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground disabled:opacity-60"
+                    >
+                      {actionLoading.generateAll ? t("account.insights.generating") : t("account.insights.generateAll")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionLoading.natal || !divineOverview?.profileComplete}
+                      onClick={() => void runNatal(!divineOverview?.natal.generated)}
+                      className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground disabled:opacity-60"
+                    >
+                      {actionLoading.natal
+                        ? t("account.insights.processing")
+                        : divineOverview?.natal.generated
+                          ? t("account.insights.refreshNatal")
+                          : t("account.insights.generateNatal")}
+                    </button>
+                  </div>
+                </div>
+
+                {feedback && (
+                  <p
+                    className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
+                      feedback.tone === "success"
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                        : "border-red-500/40 bg-red-500/10 text-red-200"
+                    }`}
+                  >
+                    {feedback.text}
                   </p>
                 )}
 
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
-                  <article className="rounded-xl border border-border bg-[rgba(255,255,255,0.03)] p-4">
-                    <h3 className="text-sm font-semibold text-foreground">{t("account.divine.card.natal")}</h3>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {divineOverview?.natal.generated
-                        ? t("account.divine.status.generated")
-                        : t("account.divine.status.notGenerated")}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("account.divine.lastUpdated")} {formatDate(divineOverview?.natal.generatedAt ?? null)}
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      {divineOverview?.natal.summary?.sunSign ?? "—"} / {divineOverview?.natal.summary?.moonSign ?? "—"} / {divineOverview?.natal.summary?.risingSign ?? "—"}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={actionLoading.natal || !divineOverview?.profileComplete}
-                        onClick={() => void runNatal(!divineOverview?.natal.generated)}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground disabled:opacity-60"
-                      >
-                        {actionLoading.natal
-                          ? t("account.divine.processing")
-                          : divineOverview?.natal.generated
-                            ? t("account.divine.regenerate")
-                            : t("account.divine.generate")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDivineTab("natal")}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground"
-                      >
-                        {t("account.divine.viewDetails")}
-                      </button>
-                    </div>
-                  </article>
-
-                  <article className="rounded-xl border border-border bg-[rgba(255,255,255,0.03)] p-4">
-                    <h3 className="text-sm font-semibold text-foreground">{t("account.divine.card.daily")}</h3>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {divineOverview?.daily.generated
-                        ? t("account.divine.status.generated")
-                        : t("account.divine.status.notGenerated")}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("account.divine.lastUpdated")} {formatDate(divineOverview?.daily.generatedAt ?? null)}
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      {(divineOverview?.daily.horoscopeData ?? "—").slice(0, 110)}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={actionLoading.daily || !divineOverview?.profileComplete}
-                        onClick={() => void runDaily(!divineOverview?.daily.generated)}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground disabled:opacity-60"
-                      >
-                        {actionLoading.daily
-                          ? t("account.divine.processing")
-                          : divineOverview?.daily.generated
-                            ? t("account.divine.regenerate")
-                            : t("account.divine.generate")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setDivineTab("daily")}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground"
-                      >
-                        {t("account.divine.viewDetails")}
-                      </button>
-                    </div>
-                  </article>
-
-                  <article className="rounded-xl border border-border bg-[rgba(255,255,255,0.03)] p-4">
-                    <h3 className="text-sm font-semibold text-foreground">{t("account.divine.card.synastry")}</h3>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {divineOverview?.synastry.generated
-                        ? t("account.divine.status.generated")
-                        : t("account.divine.status.notGenerated")}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {t("account.divine.lastUpdated")} {formatDate(divineOverview?.synastry.generatedAt ?? null)}
-                    </p>
-                    <p className="mt-2 text-sm text-foreground">
-                      {divineOverview?.synastry.partner?.name ??
-                        divineOverview?.synastry.partner?.birthPlace ??
-                        "—"}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setDivineTab("synastry")}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs text-foreground"
-                      >
-                        {t("account.divine.viewDetails")}
-                      </button>
-                    </div>
-                  </article>
-                </div>
-
-                <div className="mt-5 rounded-xl border border-border bg-[rgba(255,255,255,0.02)] p-4">
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {t("account.divine.synastry.title")}
-                  </h3>
-
-                  {partners.length > 0 && (
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <label className="text-xs text-muted-foreground">
-                        <input
-                          type="radio"
-                          name="synastry-mode"
-                          checked={synastryForm.mode === "saved"}
-                          onChange={() => {
-                            setSynastryResolvedLocation(null)
-                            setSynastryForm((prev) => ({
-                              ...prev,
-                              mode: "saved",
-                              partnerId: prev.partnerId || partners[0]?.id || "",
-                            }))
-                          }}
-                          className="mr-1"
-                        />
-                        {t("account.divine.synastry.savedPartner")}
-                      </label>
-                      <label className="text-xs text-muted-foreground">
-                        <input
-                          type="radio"
-                          name="synastry-mode"
-                          checked={synastryForm.mode === "new"}
-                          onChange={() => {
-                            setSynastryResolvedLocation(null)
-                            setSynastryForm((prev) => ({
-                              ...prev,
-                              mode: "new",
-                            }))
-                          }}
-                          className="mr-1"
-                        />
-                        {t("account.divine.synastry.newPartner")}
-                      </label>
-                    </div>
-                  )}
-
-                  {synastryForm.mode === "saved" && partners.length > 0 ? (
-                    <div className="mt-3">
-                      <label className="text-sm text-muted-foreground">
-                        {t("account.divine.synastry.selectPartner")}
-                        <select
-                          value={synastryForm.partnerId}
-                          onChange={(event) =>
-                            setSynastryForm((prev) => ({ ...prev, partnerId: event.target.value }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
-                        >
-                          {partners.map((partner) => (
-                            <option key={partner.id} value={partner.id}>
-                              {partner.name || `${partner.birthDate} · ${partner.birthPlace}`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {selectedSavedPartner && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {selectedSavedPartner.birthDate} • {selectedSavedPartner.birthTime} • {selectedSavedPartner.birthPlace}
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <label className="text-sm text-muted-foreground">
-                        {t("account.divine.synastry.name")}
-                        <input
-                          value={synastryForm.name}
-                          onChange={(event) =>
-                            setSynastryForm((prev) => ({ ...prev, name: event.target.value }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
-                        />
-                      </label>
-                      <label className="text-sm text-muted-foreground">
-                        {t("account.field.birthDate")}
-                        <input
-                          type="date"
-                          value={synastryForm.birthDate}
-                          onChange={(event) =>
-                            setSynastryForm((prev) => ({ ...prev, birthDate: event.target.value }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
-                        />
-                      </label>
-                      <label className="text-sm text-muted-foreground">
-                        {t("account.field.birthTime")}
-                        <input
-                          type="time"
-                          value={synastryForm.birthTime}
-                          onChange={(event) =>
-                            setSynastryForm((prev) => ({ ...prev, birthTime: event.target.value }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
-                        />
-                      </label>
-                      <BirthPlaceAutocomplete
-                        label={t("account.field.birthPlace")}
-                        placeholder={
-                          isRo ? "Oraș, județ sau țară" : "City, State or Country"
-                        }
-                        value={synastryForm.birthPlace}
-                        birthDate={synastryForm.birthDate}
-                        birthTime={synastryForm.birthTime}
-                        required
-                        onValueChange={(nextValue) =>
-                          setSynastryForm((prev) => ({ ...prev, birthPlace: nextValue }))
-                        }
-                        onResolvedChange={setSynastryResolvedLocation}
-                        initialResolvedLocation={synastryResolvedLocation}
-                        messages={{
-                          loadingSuggestions: isRo ? "Se caută locații..." : "Searching locations...",
-                          loadingResolution: isRo ? "Se validează locația..." : "Resolving location...",
-                          missingBirthDateTime:
-                            isRo
-                              ? "Completează data și ora nașterii pentru validarea locației."
-                              : "Enter birth date and time to validate the location.",
-                          noResults: isRo ? "Nicio sugestie." : "No suggestions found.",
-                        }}
-                      />
-                      <label className="text-sm text-muted-foreground sm:col-span-2">
-                        {t("account.field.sexAtBirth")}
-                        <select
-                          value={synastryForm.sexAtBirth}
-                          onChange={(event) =>
-                            setSynastryForm((prev) => ({
-                              ...prev,
-                              sexAtBirth:
-                                event.target.value === "male" || event.target.value === "female"
-                                  ? event.target.value
-                                  : "",
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
-                        >
-                          <option value="">{t("account.field.sexPlaceholder")}</option>
-                          <option value="male">{t("account.field.male")}</option>
-                          <option value="female">{t("account.field.female")}</option>
-                        </select>
-                      </label>
-                      <label className="sm:col-span-2 text-xs text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          className="mr-1"
-                          checked={synastryForm.savePartner}
-                          onChange={(event) =>
-                            setSynastryForm((prev) => ({ ...prev, savePartner: event.target.checked }))
-                          }
-                        />
-                        {t("account.divine.synastry.savePartner")}
-                      </label>
-                    </div>
-                  )}
-
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={() => void runSynastry()}
-                      disabled={
-                        actionLoading.synastry ||
-                        !divineOverview?.profileComplete ||
-                        (synastryForm.mode === "saved"
-                          ? !synastryForm.partnerId
-                          : !synastryForm.birthDate ||
-                            !synastryForm.birthTime ||
-                            !synastryForm.birthPlace ||
-                            !synastryForm.sexAtBirth ||
-                            !synastryResolvedLocation)
-                      }
-                      className="rounded-lg border border-border px-4 py-2 text-sm text-foreground disabled:opacity-60"
-                    >
-                      {actionLoading.synastry
-                        ? t("account.divine.processing")
-                        : t("account.divine.synastry.generate")}
-                    </button>
+                {divineLoading ? (
+                  <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t("account.insights.loading")}
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                      <h4 className="text-base font-semibold text-foreground">{t("account.insights.coreSignature")}</h4>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {t("account.insights.sun")}: {natalSummary?.sunSign ?? "—"} · {t("account.insights.moon")}:{" "}
+                        {natalSummary?.moonSign ?? "—"} · {t("account.insights.rising")}: {natalSummary?.risingSign ?? "—"}
+                      </p>
+                    </div>
 
-                <div className="mt-5 rounded-xl border border-border bg-[rgba(255,255,255,0.02)] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {t("account.divine.details.title")}
-                    </h3>
-                    <label className="text-xs text-muted-foreground">
-                      <input
-                        type="checkbox"
-                        className="mr-1"
-                        checked={showRawDivine}
-                        onChange={(event) => setShowRawDivine(event.target.checked)}
-                      />
-                      {t("account.divine.details.showRaw")}
-                    </label>
-                  </div>
+                    {natalChartSrc && (
+                      <div className="rounded-xl border border-white/10 bg-black/30 p-4">
+                        <h4 className="mb-3 text-sm font-semibold text-foreground">{t("account.insights.birthChart")}</h4>
+                        <img
+                          src={natalChartSrc}
+                          alt={t("account.insights.birthChart")}
+                          className="max-h-[520px] w-full rounded-xl border border-white/10 bg-white/95 object-contain p-3"
+                        />
+                      </div>
+                    )}
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDivineTab("natal")}
-                      className={`rounded-md px-3 py-1.5 text-xs ${
-                        divineTab === "natal"
-                          ? "bg-[rgba(109,75,255,0.25)] text-foreground"
-                          : "border border-border text-muted-foreground"
-                      }`}
-                    >
-                      {t("account.divine.tab.natal")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDivineTab("daily")}
-                      className={`rounded-md px-3 py-1.5 text-xs ${
-                        divineTab === "daily"
-                          ? "bg-[rgba(109,75,255,0.25)] text-foreground"
-                          : "border border-border text-muted-foreground"
-                      }`}
-                    >
-                      {t("account.divine.tab.daily")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDivineTab("synastry")}
-                      className={`rounded-md px-3 py-1.5 text-xs ${
-                        divineTab === "synastry"
-                          ? "bg-[rgba(109,75,255,0.25)] text-foreground"
-                          : "border border-border text-muted-foreground"
-                      }`}
-                    >
-                      {t("account.divine.tab.synastry")}
-                    </button>
-                  </div>
-
-                  <div className="mt-3 text-sm text-foreground">
-                    {divineTab === "natal" && (
-                      <div className="space-y-4">
-                        <p>
-                          {t("account.divine.details.sun")}: {natalSummary?.sunSign ?? "—"} ·{" "}
-                          {t("account.divine.details.moon")}: {natalSummary?.moonSign ?? "—"} ·{" "}
-                          {t("account.divine.details.rising")}: {natalSummary?.risingSign ?? "—"}
-                        </p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {t("account.divine.details.planets")}: {natalPlanets.length} ·{" "}
-                          {t("account.divine.details.houses")}: {natalHouses.length} ·{" "}
-                          {t("account.divine.details.aspects")}: {natalAspects.length}
-                        </p>
-                        {natalChartSrc && (
-                          <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              {t("account.divine.details.chart")}
-                            </p>
-                            <img
-                              src={natalChartSrc}
-                              alt={t("account.divine.card.natal")}
-                              className="max-h-[520px] w-full rounded-xl border border-border bg-white/95 object-contain p-3"
-                            />
-                          </div>
-                        )}
-                        {natalPlanets.length > 0 ? (
-                          <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              {t("account.divine.details.planets")}
-                            </p>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {natalPlanets.map((planet, index) => (
-                                <div
-                                  key={`${displayString(planet.name)}-${index}`}
-                                  className="rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3"
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="font-medium">
-                                      {displayString(planet.name)}
-                                    </span>
-                                    <span className="text-muted-foreground">
-                                      {displayString(planet.sign)}
-                                    </span>
-                                  </div>
-                                  <p className="mt-1 text-xs text-muted-foreground">
-                                    {t("account.divine.details.house")} {displayString(planet.house)} ·{" "}
-                                    {t("account.divine.details.degree")}{" "}
-                                    {displayString(planet.fullDegree ?? planet.degree ?? planet.longitude)}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                    <details className="rounded-xl border border-white/10 bg-black/25 p-4">
+                      <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("account.insights.planets")}</summary>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {natalPlanets.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">{t("account.insights.noData")}</p>
                         ) : (
-                          <p className="text-xs text-muted-foreground">
-                            {t("account.divine.details.noData")}
-                          </p>
-                        )}
-                        {natalHouses.length > 0 && (
-                          <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              {t("account.divine.details.houses")}
-                            </p>
-                            <div className="grid gap-2 sm:grid-cols-3">
-                              {natalHouses.map((house, index) => (
-                                <div
-                                  key={`${displayString(house.house)}-${index}`}
-                                  className="rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3 text-xs"
-                                >
-                                  {t("account.divine.details.house")} {displayString(house.house)} ·{" "}
-                                  {displayString(house.sign)} ·{" "}
-                                  {displayString(house.fullDegree ?? house.degree)}
-                                </div>
-                              ))}
+                          natalPlanets.map((planet, index) => (
+                            <div key={`${displayString(planet.name)}-${index}`} className="rounded-lg border border-white/10 bg-black/25 p-3 text-sm">
+                              <p className="font-medium text-foreground">{displayString(planet.name)} · {displayString(planet.sign)}</p>
+                              <p className="text-xs text-muted-foreground">{t("account.insights.house")} {displayString(planet.house)} · {t("account.insights.degree")} {displayString(planet.fullDegree ?? planet.degree ?? planet.longitude)}</p>
                             </div>
-                          </div>
-                        )}
-                        {natalAspects.length > 0 && (
-                          <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              {t("account.divine.details.aspects")}
-                            </p>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {natalAspects.slice(0, 24).map((aspect, index) => (
-                                <div
-                                  key={`${displayString(aspect.planet1)}-${displayString(aspect.planet2)}-${index}`}
-                                  className="rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3 text-xs"
-                                >
-                                  <span className="text-foreground">
-                                    {displayString(aspect.planet1)} · {displayString(aspect.aspect)} ·{" "}
-                                    {displayString(aspect.planet2)}
-                                  </span>
-                                  <span className="ml-2 text-muted-foreground">
-                                    {t("account.divine.details.orb")} {displayString(aspect.orb)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                          ))
                         )}
                       </div>
-                    )}
+                    </details>
 
-                    {divineTab === "daily" && (
-                      <div className="space-y-3">
-                        <p>{divineOverview?.daily.horoscopeData ?? "—"}</p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {t("account.divine.details.localDate")} {divineOverview?.daily.date ?? "—"} · {t("account.divine.details.sign")} {divineOverview?.daily.sign ?? "—"}
-                        </p>
-                        {Object.keys(dailyCategories).length > 0 && (
-                          <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              {t("account.divine.details.categories")}
-                            </p>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {Object.entries(dailyCategories).map(([key, value]) => (
-                                <div
-                                  key={key}
-                                  className="rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3"
-                                >
-                                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                                    {key}
-                                  </p>
-                                  <p className="mt-1 text-sm">{displayString(value)}</p>
-                                </div>
-                              ))}
+                    <details className="rounded-xl border border-white/10 bg-black/25 p-4">
+                      <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("account.insights.houses")}</summary>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        {natalHouses.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">{t("account.insights.noData")}</p>
+                        ) : (
+                          natalHouses.map((house, index) => (
+                            <div key={`${displayString(house.house)}-${index}`} className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-foreground">
+                              {t("account.insights.house")} {displayString(house.house)} · {displayString(house.sign)} · {displayString(house.fullDegree ?? house.degree)}
                             </div>
-                          </div>
+                          ))
                         )}
                       </div>
-                    )}
+                    </details>
 
-                    {divineTab === "synastry" && (
-                      <div className="space-y-4">
-                        <p>
-                          {divineOverview?.synastry.summary?.emotional
-                            ? String(divineOverview.synastry.summary.emotional)
-                            : divineOverview?.synastry.summary?.communication
-                              ? String(divineOverview.synastry.summary.communication)
-                              : "—"}
-                        </p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {t("account.divine.details.score")}{" "}
-                          {divineOverview?.synastry.summary?.score != null
-                            ? String(divineOverview.synastry.summary.score)
-                            : "—"}{" "}
-                          · {t("account.divine.details.partner")}{" "}
-                          {divineOverview?.synastry.partner?.name ??
-                            divineOverview?.synastry.partner?.birthPlace ??
-                            "—"}
-                        </p>
-                        {synastryPartnerPlanets.length > 0 && (
-                          <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              {t("account.divine.details.partnerNatal")}
-                            </p>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {synastryPartnerPlanets.map((planet, index) => (
-                                <div
-                                  key={`${displayString(planet.name)}-${index}`}
-                                  className="rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3 text-xs"
-                                >
-                                  {displayString(planet.name)} · {displayString(planet.sign)} ·{" "}
-                                  {t("account.divine.details.house")} {displayString(planet.house)}
-                                </div>
-                              ))}
+                    <details className="rounded-xl border border-white/10 bg-black/25 p-4">
+                      <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("account.insights.aspects")}</summary>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {natalAspects.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">{t("account.insights.noData")}</p>
+                        ) : (
+                          natalAspects.slice(0, 24).map((aspect, index) => (
+                            <div key={`${displayString(aspect.planet1)}-${displayString(aspect.planet2)}-${index}`} className="rounded-lg border border-white/10 bg-black/25 p-3 text-xs text-foreground">
+                              {displayString(aspect.planet1)} · {displayString(aspect.aspect)} · {displayString(aspect.planet2)} · {t("account.insights.orb")} {displayString(aspect.orb)}
                             </div>
-                          </div>
-                        )}
-                        {(synastryP1.length > 0 || synastryP2.length > 0) && (
-                          <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              {t("account.divine.details.synastryPlacements")}
-                            </p>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              {[
-                                ["P1", synastryP1],
-                                ["P2", synastryP2],
-                              ].map(([label, placements]) => (
-                                <div
-                                  key={String(label)}
-                                  className="rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3"
-                                >
-                                  <p className="mb-2 text-xs font-medium text-muted-foreground">
-                                    {String(label)}
-                                  </p>
-                                  <div className="space-y-1 text-xs">
-                                    {(placements as DisplayRecord[]).slice(0, 16).map((placement, index) => (
-                                      <p key={`${String(label)}-${index}`}>
-                                        {displayString(placement.planet ?? placement.name)} ·{" "}
-                                        {displayString(placement.sign)} ·{" "}
-                                        {t("account.divine.details.house")}{" "}
-                                        {displayString(placement.house)}
-                                      </p>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                          ))
                         )}
                       </div>
+                    </details>
+
+                    {IS_DEV && (
+                      <details className="rounded-xl border border-white/10 bg-black/25 p-4">
+                        <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("account.insights.developerMode")}</summary>
+                        <label className="mt-3 inline-flex items-center text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            className="mr-2"
+                            checked={showRawDivine}
+                            onChange={(event) => setShowRawDivine(event.target.checked)}
+                          />
+                          {t("account.insights.showRaw")}
+                        </label>
+                        {showRawDivine && (
+                          <pre className="mt-3 max-h-80 overflow-auto rounded-lg border border-white/10 bg-black/35 p-3 text-xs text-foreground">
+                            {JSON.stringify(divineTabData, null, 2)}
+                          </pre>
+                        )}
+                      </details>
                     )}
                   </div>
+                )}
 
-                  {showRawDivine && (
-                    <pre className="mt-3 max-h-80 overflow-auto rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3 text-xs text-foreground">
-                      {JSON.stringify(divineTabData, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              </>
-            )}
+                {divineError && <p className="mt-4 text-sm text-red-300">{divineError}</p>}
+              </div>
 
-            {divineError && <p className="mt-3 text-sm text-red-300">{divineError}</p>}
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+                <h3 className="text-base font-semibold text-foreground">{t("account.readings.title")}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">{t("account.readings.subtitle")}</p>
+                {readingsLoading ? (
+                  <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t("account.readings.loading")}
+                  </div>
+                ) : readings.length === 0 ? (
+                  <p className="mt-4 text-sm text-muted-foreground">{t("account.readings.empty")}</p>
+                ) : (
+                  <div className="mt-4 grid gap-3">
+                    {readings.slice(0, 4).map((reading) => (
+                      <button
+                        key={reading.id}
+                        type="button"
+                        onClick={() => void openReading(reading.id)}
+                        className="w-full rounded-xl border border-white/10 bg-black/25 p-4 text-left hover:bg-black/35"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-foreground">{reading.question}</p>
+                          <p className="text-xs text-muted-foreground">{formatDate(reading.createdAt)}</p>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">{reading.answerPreview}</p>
+                      </button>
+                    ))}
+                    {nextReadingsCursor && (
+                      <button
+                        type="button"
+                        onClick={() => void loadMoreReadings()}
+                        disabled={readingsLoadingMore}
+                        className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground disabled:opacity-60"
+                      >
+                        {readingsLoadingMore ? t("common.loading") : t("account.readings.loadMore")}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {selectedReading && (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-4">
+                    <p className="text-sm font-semibold text-foreground">{selectedReading.question}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">{selectedReading.answer}</p>
+                  </div>
+                )}
+                {readingsError && <p className="mt-3 text-sm text-red-300">{readingsError}</p>}
+              </div>
             </section>
           )}
 
-          {activeSectionTab === "profile" && (
-            <section className="rounded-2xl border border-border bg-[rgba(255,255,255,0.03)] p-6">
-            <h2 className="text-lg font-semibold text-foreground">
-              {t("account.profile.title")}
-            </h2>
+          {activeSectionTab === "cosmic_profile" && (
+            <section className="rounded-3xl border border-white/10 bg-[radial-gradient(120%_120%_at_0%_0%,rgba(139,92,246,0.22),rgba(10,10,20,0.94)_62%)] p-6 shadow-[0_0_70px_rgba(109,75,255,0.14)]">
+              <h2 className="text-lg font-semibold text-foreground">{t("account.profile.title")}</h2>
+              <p className="mt-2 text-sm text-muted-foreground">{t("account.profile.subtitle")}</p>
             {loading ? (
               <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -1423,108 +1156,345 @@ export default function AccountPage() {
             </section>
           )}
 
-          {activeSectionTab === "readings" && (
-            <section className="rounded-2xl border border-border bg-[rgba(255,255,255,0.03)] p-6">
-            <h2 className="text-lg font-semibold text-foreground">
-              {t("account.readings.title")}
-            </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t("account.readings.subtitle")}
-            </p>
-
-            {readingsLoading ? (
-              <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t("account.readings.loading")}
+          {activeSectionTab === "daily_guidance" && (
+            <section className="space-y-4 rounded-3xl border border-white/10 bg-[radial-gradient(120%_120%_at_100%_0%,rgba(109,75,255,0.22),rgba(10,10,20,0.94)_62%)] p-6 shadow-[0_0_70px_rgba(109,75,255,0.14)]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">{t("account.daily.title")}</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">{t("account.daily.subtitle")}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={actionLoading.daily || !divineOverview?.profileComplete}
+                  onClick={() => void runDaily(!divineOverview?.daily.generated)}
+                  className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground disabled:opacity-60"
+                >
+                  {actionLoading.daily
+                    ? t("account.insights.processing")
+                    : divineOverview?.daily.generated
+                      ? t("account.daily.refresh")
+                      : t("account.daily.generate")}
+                </button>
               </div>
-            ) : readings.length === 0 ? (
-              <p className="mt-4 text-sm text-muted-foreground">
-                {t("account.readings.empty")}
-              </p>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {readings.map((reading) => (
-                  <button
-                    key={reading.id}
-                    type="button"
-                    onClick={() => void openReading(reading.id)}
-                    className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] p-4 text-left hover:bg-[rgba(255,255,255,0.07)]"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-foreground">
-                        {reading.agentType.replaceAll("_", " ")}
-                      </p>
-                      <p className="text-xs text-muted-foreground">{formatDate(reading.createdAt)}</p>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {t("account.readings.question")} {reading.question}
-                    </p>
-                    <p className="mt-1 text-sm text-foreground">{reading.answerPreview}</p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {reading.hasLocalizedAstrology
-                        ? t("account.readings.withRoLocalization")
-                        : t("account.readings.withoutRoLocalization")}
-                    </p>
-                  </button>
-                ))}
 
-                {nextReadingsCursor && (
-                  <button
-                    type="button"
-                    onClick={() => void loadMoreReadings()}
-                    disabled={readingsLoadingMore}
-                    className="rounded-lg border border-border px-4 py-2 text-sm text-foreground disabled:opacity-60"
-                  >
-                    {readingsLoadingMore
-                      ? t("common.loading")
-                      : t("account.readings.loadMore")}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {readingDetailLoading && (
-              <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t("account.readings.detailLoading")}
-              </div>
-            )}
-
-            {selectedReading && !readingDetailLoading && (
-              <div className="mt-4 rounded-xl border border-border bg-[rgba(255,255,255,0.03)] p-4">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {t("account.readings.detailTitle")}
-                </h3>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {t("account.readings.question")} {selectedReading.question}
+              <article className="rounded-2xl border border-white/10 bg-black/30 p-5">
+                <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.daily.mainReading")}</p>
+                <p className="mt-3 text-sm leading-7 text-foreground">{divineOverview?.daily.horoscopeData ?? "—"}</p>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  {t("account.daily.localDate")} {divineOverview?.daily.date ?? "—"} · {t("account.daily.sign")} {divineOverview?.daily.sign ?? "—"}
                 </p>
-                <p className="mt-2 text-sm text-foreground">{selectedReading.answer}</p>
+              </article>
 
-                {selectedReading.astrologySnapshotLocalized?.segments && (
-                  <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t("account.readings.localizedRo")}
+              <div className="grid gap-3 md:grid-cols-2">
+                {[
+                  ["travel", t("account.daily.categories.travel")],
+                  ["emotions", t("account.daily.categories.emotions")],
+                  ["health", t("account.daily.categories.health")],
+                  ["career", t("account.daily.categories.career")],
+                ].map(([key, label]) => (
+                  <article key={key} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+                    <p className="mt-2 text-sm text-foreground">{displayString(dailyCategories[key])}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {activeSectionTab === "compatibility" && (
+            <section className="space-y-4 rounded-3xl border border-white/10 bg-[radial-gradient(120%_120%_at_40%_0%,rgba(139,92,246,0.20),rgba(10,10,20,0.94)_62%)] p-6 shadow-[0_0_70px_rgba(109,75,255,0.14)]">
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">{t("account.compatibility.title")}</h2>
+                <p className="mt-2 text-sm text-muted-foreground">{t("account.compatibility.subtitle")}</p>
+              </div>
+
+              <article className="rounded-2xl border border-violet-300/20 bg-black/30 p-5 shadow-[0_0_36px_rgba(139,92,246,0.16)]">
+                <h3 className="text-base font-semibold text-foreground">
+                  {t("account.compatibility.withPartner")} {compatibilityPartnerName}
+                </h3>
+                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                  {t("account.compatibility.summaryLabel")}
+                </p>
+                <p className="mt-3 text-sm leading-7 text-foreground">
+                  {divineOverview?.synastry.summary?.emotional
+                    ? String(divineOverview.synastry.summary.emotional)
+                    : divineOverview?.synastry.summary?.communication
+                      ? String(divineOverview.synastry.summary.communication)
+                      : t("account.compatibility.emptySummary")}
+                </p>
+                {!hasCompatibilityReading && (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    {t("account.compatibility.emptySummaryHint")}
+                  </p>
+                )}
+              </article>
+
+              <div className="rounded-2xl border border-violet-300/20 bg-black/25 p-5 shadow-[0_0_28px_rgba(139,92,246,0.12)]">
+                <h3 className="text-sm font-semibold text-foreground">
+                  {hasSavedPartners
+                    ? t("account.compatibility.choosePartner")
+                    : t("account.compatibility.addPartner")}
+                </h3>
+
+                {hasSavedPartners ? (
+                  <div className="mt-4 space-y-4">
+                    <label className="text-sm text-muted-foreground">
+                      {t("account.compatibility.choosePartner")}
+                      <select
+                        value={selectedPartnerId}
+                        onChange={(event) => setSelectedPartnerId(event.target.value)}
+                        className="mt-2 w-full rounded-xl border border-violet-300/20 bg-black/40 px-3 py-2 text-foreground"
+                      >
+                        {partners.map((partner) => (
+                          <option key={partner.id} value={partner.id}>
+                            {partner.name || `${partner.birthDate} · ${partner.birthPlace}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    {selectedSavedPartner && (
+                      <div className="rounded-xl border border-violet-300/15 bg-black/30 p-4 text-xs text-muted-foreground">
+                        <p className="text-sm font-medium text-foreground">
+                          {t("account.compatibility.previewName")} {selectedSavedPartner.name || "—"}
+                        </p>
+                        <p className="mt-2">
+                          {t("account.compatibility.previewBirthDate")} {selectedSavedPartner.birthDate || "—"}
+                        </p>
+                        <p>
+                          {t("account.compatibility.previewBirthTime")} {selectedSavedPartner.birthTime || "—"}
+                        </p>
+                        <p>
+                          {t("account.compatibility.previewBirthPlace")} {selectedSavedPartner.birthPlace || "—"}
+                        </p>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => void runSynastry("saved")}
+                      disabled={isSavedPartnerGenerateDisabled}
+                      className="w-full rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-4 py-2.5 text-sm font-semibold text-foreground disabled:opacity-60"
+                    >
+                      {actionLoading.synastry
+                        ? t("account.insights.processing")
+                        : t("account.compatibility.generate")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetNewPartnerForm()
+                        setIsAddingNewPartner(true)
+                      }}
+                      className="text-sm font-medium text-violet-200 hover:text-violet-100"
+                    >
+                      {t("account.compatibility.addNewPartner")}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-violet-300/15 bg-black/30 p-4">
+                    <p className="text-sm text-foreground">{t("account.compatibility.noSavedPartnersTitle")}</p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {t("account.compatibility.noSavedPartnersSubtitle")}
                     </p>
-                    <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3 text-xs text-foreground">
-                      {JSON.stringify(selectedReading.astrologySnapshotLocalized.segments, null, 2)}
-                    </pre>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetNewPartnerForm()
+                        setIsAddingNewPartner(true)
+                      }}
+                      className="mt-4 w-full rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-4 py-2.5 text-sm font-semibold text-foreground"
+                    >
+                      {t("account.compatibility.addPartner")}
+                    </button>
                   </div>
                 )}
 
-                {selectedReading.astrologySnapshotCanonical && (
-                  <div className="mt-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {t("account.readings.canonicalValues")}
-                    </p>
-                    <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-border bg-[rgba(255,255,255,0.03)] p-3 text-xs text-foreground">
-                      {JSON.stringify(selectedReading.astrologySnapshotCanonical, null, 2)}
-                    </pre>
+                {isAddingNewPartner && (
+                  <div className="mt-4 rounded-xl border border-violet-300/20 bg-black/35 p-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="text-sm text-muted-foreground md:col-span-2">
+                        {t("account.compatibility.partnerName")}
+                        <input
+                          value={newPartnerForm.name}
+                          onChange={(event) =>
+                            setNewPartnerForm((prev) => ({ ...prev, name: event.target.value }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-violet-300/15 bg-black/30 px-3 py-2 text-foreground"
+                        />
+                      </label>
+                      <label className="text-sm text-muted-foreground">
+                        {t("account.field.birthDate")}
+                        <input
+                          type="date"
+                          value={newPartnerForm.birthDate}
+                          onChange={(event) =>
+                            setNewPartnerForm((prev) => ({ ...prev, birthDate: event.target.value }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-violet-300/15 bg-black/30 px-3 py-2 text-foreground"
+                        />
+                      </label>
+                      <label className="text-sm text-muted-foreground">
+                        {t("account.field.birthTime")}
+                        <input
+                          type="time"
+                          value={newPartnerForm.birthTime}
+                          onChange={(event) =>
+                            setNewPartnerForm((prev) => ({ ...prev, birthTime: event.target.value }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-violet-300/15 bg-black/30 px-3 py-2 text-foreground"
+                        />
+                      </label>
+                      <BirthPlaceAutocomplete
+                        label={t("account.field.birthPlace")}
+                        placeholder={isRo ? "Oraș, județ sau țară" : "City, State or Country"}
+                        value={newPartnerForm.birthPlace}
+                        birthDate={newPartnerForm.birthDate}
+                        birthTime={newPartnerForm.birthTime}
+                        required
+                        onValueChange={(nextValue) =>
+                          setNewPartnerForm((prev) => ({ ...prev, birthPlace: nextValue }))
+                        }
+                        onResolvedChange={setSynastryResolvedLocation}
+                        initialResolvedLocation={synastryResolvedLocation}
+                        messages={{
+                          loadingSuggestions: isRo ? "Se caută locații..." : "Searching locations...",
+                          loadingResolution: isRo ? "Se validează locația..." : "Resolving location...",
+                          missingBirthDateTime:
+                            isRo
+                              ? "Completează data și ora nașterii pentru validarea locației."
+                              : "Enter birth date and time to validate the location.",
+                          noResults: isRo ? "Nicio sugestie." : "No suggestions found.",
+                        }}
+                      />
+                      <label className="text-sm text-muted-foreground md:col-span-2">
+                        {t("account.field.sexAtBirth")}
+                        <select
+                          value={newPartnerForm.sexAtBirth}
+                          onChange={(event) =>
+                            setNewPartnerForm((prev) => ({
+                              ...prev,
+                              sexAtBirth:
+                                event.target.value === "male" || event.target.value === "female"
+                                  ? event.target.value
+                                  : "",
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-violet-300/15 bg-black/30 px-3 py-2 text-foreground"
+                        >
+                          <option value="">{t("account.field.sexPlaceholder")}</option>
+                          <option value="male">{t("account.field.male")}</option>
+                          <option value="female">{t("account.field.female")}</option>
+                        </select>
+                      </label>
+                      <label className="md:col-span-2 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          className="mr-1"
+                          checked={newPartnerForm.savePartner}
+                          onChange={(event) =>
+                            setNewPartnerForm((prev) => ({ ...prev, savePartner: event.target.checked }))
+                          }
+                        />
+                        {t("account.compatibility.saveForFuture")}
+                      </label>
+                    </div>
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={() => void runSynastry("new")}
+                        disabled={isNewPartnerGenerateDisabled}
+                        className="rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-4 py-2.5 text-sm font-semibold text-foreground disabled:opacity-60"
+                      >
+                        {actionLoading.synastry
+                          ? t("account.insights.processing")
+                          : t("account.compatibility.saveAndGenerate")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewPartner(false)
+                          resetNewPartnerForm()
+                        }}
+                        className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-foreground"
+                      >
+                        {t("account.compatibility.cancel")}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
-            )}
 
-            {readingsError && <p className="mt-3 text-sm text-red-300">{readingsError}</p>}
+              {hasCompatibilityReading && (
+                <details className="rounded-2xl border border-white/10 bg-black/25 p-5">
+                  <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("account.compatibility.technicalDetails")}</summary>
+                  <div className="mt-3 space-y-3">
+                    {(synastryP1.length > 0 || synastryP2.length > 0) && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {[
+                          ["P1", synastryP1],
+                          ["P2", synastryP2],
+                        ].map(([label, placements]) => (
+                          <div key={String(label)} className="rounded-lg border border-white/10 bg-black/30 p-3">
+                            <p className="mb-2 text-xs font-medium text-muted-foreground">{String(label)}</p>
+                            <div className="space-y-1 text-xs">
+                              {(placements as DisplayRecord[]).slice(0, 16).map((placement, index) => (
+                                <p key={`${String(label)}-${index}`}>
+                                  {displayString(placement.planet ?? placement.name)} · {displayString(placement.sign)} · {t("account.insights.house")} {displayString(placement.house)}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {synastryPartnerPlanets.length > 0 && (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {synastryPartnerPlanets.map((planet, index) => (
+                          <div key={`${displayString(planet.name)}-${index}`} className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs">
+                            {displayString(planet.name)} · {displayString(planet.sign)} · {t("account.insights.house")} {displayString(planet.house)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+            </section>
+          )}
+
+          {activeSectionTab === "billing" && (
+            <section className="space-y-4 rounded-3xl border border-white/10 bg-[radial-gradient(120%_120%_at_30%_0%,rgba(109,75,255,0.22),rgba(10,10,20,0.94)_62%)] p-6 shadow-[0_0_70px_rgba(109,75,255,0.14)]">
+              <h2 className="text-lg font-semibold text-foreground">{t("account.billing.title")}</h2>
+              <p className="text-sm text-muted-foreground">{t("account.billing.subtitle")}</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <article className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.billing.currentPlan")}</p>
+                  <p className="mt-2 text-base font-medium text-foreground">{planLabel()}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {subscriptionStatus?.currentPeriodEnd
+                      ? `${t("account.hero.nextRenewal")} ${formatDate(subscriptionStatus.currentPeriodEnd)}`
+                      : "—"}
+                  </p>
+                </article>
+                <article className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.billing.actionsTitle")}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href={localizedPath("/account/subscription")}
+                      className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground hover:bg-white/5"
+                    >
+                      {t("account.billing.manageSubscription")}
+                    </Link>
+                    <Link
+                      href={localizedPath("/billing/setup")}
+                      className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground hover:bg-white/5"
+                    >
+                      {t("account.billing.manageBillingDetails")}
+                    </Link>
+                  </div>
+                </article>
+              </div>
             </section>
           )}
         </div>
