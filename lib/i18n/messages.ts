@@ -45,7 +45,7 @@ export const messages: Record<Locale, MessageMap> = {
 
     "subscription.success.title": "Subscription started",
     "subscription.success.body":
-      "Stripe is confirming your subscription. Your account will update as soon as the webhook sync completes.",
+      "We’re activating your access in a few moments.",
     "subscription.success.openChat": "Open chat",
     "subscription.success.viewPlan": "View plan",
 
@@ -100,7 +100,7 @@ export const messages: Record<Locale, MessageMap> = {
 
     "subscription.success.title": "Abonament activat",
     "subscription.success.body":
-      "Stripe confirmă abonamentul tău. Contul se actualizează imediat ce webhook-ul finalizează sincronizarea.",
+      "Îți activăm accesul în câteva momente.",
     "subscription.success.openChat": "Deschide chatul",
     "subscription.success.viewPlan": "Vezi planul",
 
