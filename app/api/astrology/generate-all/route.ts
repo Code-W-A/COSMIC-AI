@@ -1,12 +1,16 @@
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
-import { ensureNatalChart } from "@/lib/agents/context"
+import {
+  ensureNatalChart,
+  getCachedOrGenerateDailyGuidance,
+  getProfileSunSign,
+} from "@/lib/agents/context"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
+import { DivineApiHttpError } from "@/lib/divineapi/client"
 import { getCosmicProfile } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { ensureProfileBirthLocationForDivine } from "@/lib/location/profile-location"
 import { LocationResolverError } from "@/lib/location/resolver"
-import { DivineApiHttpError } from "@/lib/divineapi/client"
 import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
@@ -18,15 +22,12 @@ export async function POST(request: Request) {
 
   if (isAuthResponse(user)) return user
 
-  let force = false
-  let source = "unknown"
+  let source: string | null = null
   try {
-    const body = (await request.json()) as { force?: unknown; source?: unknown }
-    force = body?.force === true
-    source = typeof body?.source === "string" ? body.source : "unknown"
+    const body = (await request.json()) as { source?: unknown }
+    source = typeof body?.source === "string" ? body.source : null
   } catch {
-    force = false
-    source = "unknown"
+    source = null
   }
 
   try {
@@ -39,6 +40,7 @@ export async function POST(request: Request) {
         400
       )
     }
+
     const profileCompleteness = getProfileInputCompleteness(profile, "astrology_natal")
     if (!profileCompleteness.isComplete) {
       return errorResponse(
@@ -52,13 +54,18 @@ export async function POST(request: Request) {
       uid: user.uid,
       profile,
       locale,
-      source: "api.astrology.natal",
+      source: "api.astrology.generate_all",
     })
 
-    await logInfo("divineapi.natal", "divine.natal_generate_started", {
+    if (source === "chat_cta") {
+      await logInfo("chat", "chat.cta_generate_clicked", {
+        uid: user.uid,
+      })
+    }
+
+    await logInfo("divineapi", "divine.generate_all_started", {
       uid: user.uid,
-      force,
-      source,
+      source: source ?? "unknown",
       hasCoordinates:
         typeof profileWithLocation.latitude === "number" &&
         typeof profileWithLocation.longitude === "number",
@@ -66,34 +73,51 @@ export async function POST(request: Request) {
     })
 
     const hadNatal = Boolean((profile as { natalSummary?: unknown }).natalSummary)
-    const natal = await ensureNatalChart(user.uid, profileWithLocation, locale, { force })
+    const natal = await ensureNatalChart(user.uid, profileWithLocation, locale)
+    const sign = natal.summary.sunSign ?? getProfileSunSign(profileWithLocation)
 
-    await logInfo("divineapi.natal", "divine.natal_generate_completed", {
+    if (!sign) {
+      return errorResponse(
+        "natal_chart_missing_sun_sign",
+        "Please generate your natal chart first.",
+        400
+      )
+    }
+
+    const { cacheHit } = await getCachedOrGenerateDailyGuidance(
+      user.uid,
+      sign,
+      profileWithLocation,
+      locale
+    )
+
+    const generated = {
+      natal: !hadNatal,
+      daily: !cacheHit,
+    }
+    const cached = {
+      natal: hadNatal,
+      daily: cacheHit,
+    }
+
+    await logInfo("divineapi", "divine.generate_all_completed", {
       uid: user.uid,
-      force,
-      source,
-      generated: force || !hadNatal,
+      generated,
+      cached,
+      source: source ?? "unknown",
     })
 
     return successResponse({
-      data: {
-        generated: force || !hadNatal,
-        force,
-        sunSign: natal.summary.sunSign,
-        moonSign: natal.summary.moonSign,
-        risingSign: natal.summary.risingSign,
-        planets: natal.summary.planets ?? [],
-        houses: natal.summary.houses ?? [],
-        aspects: natal.summary.aspects ?? [],
-        chartImageSvg: natal.summary.chartImageSvg,
-        chartImageBase64: natal.summary.chartImageBase64,
-      },
+      generated,
+      cached,
+      compatibilitySupported: false,
+      compatibilityReason:
+        "Compatibility generation requires partner birth details and is not included in generate-all.",
     })
   } catch (error) {
-    await logError("divineapi.natal", "natal_generation_failed", {
+    await logError("divineapi", "divine.generate_all_failed", {
       uid: user.uid,
-      force,
-      source,
+      source: source ?? "unknown",
       error,
     })
 
@@ -123,9 +147,9 @@ export async function POST(request: Request) {
     }
 
     return errorResponse(
-      "natal_generation_failed",
+      "divine_generate_all_failed",
       process.env.NODE_ENV === "production"
-        ? "Unable to generate your natal chart."
+        ? "Unable to generate astrology data."
         : getErrorMessage(error),
       500
     )

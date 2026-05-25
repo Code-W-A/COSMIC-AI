@@ -4,6 +4,7 @@ import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/respo
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { getCosmicProfile, getCosmicProfileRef, getUserRef } from "@/lib/firebase/firestore"
 import { logError, logInfo } from "@/lib/logging/logger"
+import { getResolvedBirthLocationFromSource } from "@/lib/location/profile-location"
 import { isAstrologyProfileComplete } from "@/lib/profile/input-policy"
 import { isMainFocus, isSexAtBirth } from "@/types/user"
 
@@ -32,8 +33,11 @@ function validateProfileBody(body: Record<string, unknown>) {
   const birthDate = getTrimmedString(body.birthDate)
   const birthTime = getTrimmedString(body.birthTime)
   const birthPlace = getTrimmedString(body.birthPlace)
+  const birthPlacePlaceId = getTrimmedString(body.birthPlacePlaceId)
   const sexAtBirth = getTrimmedString(body.sexAtBirth)
   const timezoneIanaRaw = getTrimmedString(body.timezoneIana)
+  const latitude = getOptionalNumber(body.latitude)
+  const longitude = getOptionalNumber(body.longitude)
   const timezoneOffsetNow = getOptionalNumber(body.timezoneOffsetNow)
   const timezoneOffsetAtBirth = getOptionalNumber(body.timezoneOffsetAtBirth)
   const mainFocus = body.mainFocus
@@ -58,7 +62,10 @@ function validateProfileBody(body: Record<string, unknown>) {
     birthDate,
     birthTime,
     birthPlace,
+    birthPlacePlaceId,
     sexAtBirth,
+    latitude,
+    longitude,
     timezoneIana,
     timezoneOffsetNow,
     timezoneOffsetAtBirth,
@@ -109,6 +116,14 @@ export async function POST(request: Request) {
     return errorResponse(
       "invalid_profile",
       "Name, birth date, birth time, birth place, sex at birth, and a valid main focus are required.",
+      400
+    )
+  }
+
+  if (!getResolvedBirthLocationFromSource(profile)) {
+    return errorResponse(
+      "birth_location_unresolved",
+      "Birth location must be selected from suggestions and resolved before saving.",
       400
     )
   }

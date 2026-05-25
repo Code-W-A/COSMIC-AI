@@ -1,5 +1,8 @@
 "use client"
 
+import { onAuthStateChanged } from "firebase/auth"
+import type { User } from "firebase/auth"
+
 import { getFirebaseAuth, hasFirebaseClientConfig } from "@/lib/firebase/client"
 import { localizeApiErrorMessage } from "@/lib/i18n/api-errors"
 import { resolveClientLocale } from "@/lib/i18n/client"
@@ -23,11 +26,35 @@ export async function getFirebaseIdToken() {
   if (!hasFirebaseClientConfig()) return null
 
   const auth = getFirebaseAuth()
-  const user = auth.currentUser
+  const user = auth.currentUser ?? (await waitForFirebaseUser())
 
   if (!user) return null
 
   return user.getIdToken()
+}
+
+function waitForFirebaseUser(timeoutMs = 2500): Promise<User | null> {
+  const auth = getFirebaseAuth()
+  if (auth.currentUser) return Promise.resolve(auth.currentUser)
+
+  return new Promise<User | null>((resolve) => {
+    let settled = false
+    let unsubscribe = () => {}
+    const timeout = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      unsubscribe()
+      resolve(auth.currentUser)
+    }, timeoutMs)
+
+    unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timeout)
+      unsubscribe()
+      resolve(nextUser)
+    })
+  })
 }
 
 type ApiFetchOptions = Omit<RequestInit, "body"> & {

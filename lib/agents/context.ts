@@ -105,11 +105,16 @@ export function parsePartnerBirthDetails(value: unknown): BirthDetails | null {
     return null
   }
 
+  const requiredBirthDate = birthDate as string
+  const requiredBirthTime = birthTime as string
+  const requiredBirthPlace = birthPlace as string
+
   return {
     name: getOptionalString(partner.name),
-    birthDate,
-    birthTime,
-    birthPlace,
+    birthDate: requiredBirthDate,
+    birthTime: requiredBirthTime,
+    birthPlace: requiredBirthPlace,
+    birthPlacePlaceId: getOptionalString(partner.birthPlacePlaceId),
     sexAtBirth,
     latitude: getOptionalNumber(partner.latitude),
     longitude: getOptionalNumber(partner.longitude),
@@ -149,13 +154,24 @@ export async function saveNatalToProfile(uid: string, natal: NatalChartData) {
 export async function ensureNatalChart(
   uid: string,
   profile: CosmicProfileDocument,
-  locale?: Locale
+  locale?: Locale,
+  options?: {
+    force?: boolean
+  }
 ) {
   const expanded = profile as CosmicProfileDocument & {
     natalSummary?: NatalChartData["summary"]
   }
+  const cachedSunSign =
+    profile.sunSign ??
+    expanded.natalSummary?.sunSign ??
+    ((expanded as CosmicProfileDocument & { zodiacSign?: string }).zodiacSign ?? undefined)
+  const cachedPlanetCount = Array.isArray(expanded.natalSummary?.planets)
+    ? expanded.natalSummary.planets.length
+    : 0
+  const hasUsableCachedNatal = Boolean(expanded.natalSummary && cachedSunSign && cachedPlanetCount > 0)
 
-  if (expanded.natalSummary) {
+  if (hasUsableCachedNatal && !options?.force) {
     return {
       raw: profile.divineNatalRaw,
       summary: expanded.natalSummary,
@@ -174,7 +190,10 @@ export async function getCachedOrGenerateDailyGuidance(
   uid: string,
   sign: string,
   profile?: CosmicProfileDocument,
-  locale?: Locale
+  locale?: Locale,
+  options?: {
+    force?: boolean
+  }
 ): Promise<{ dateKey: string; daily: DailyHoroscopeData; cacheHit: boolean }> {
   const timezoneIana = getOptionalString(profile?.timezoneIana)
   const profileOffsetNow =
@@ -205,7 +224,7 @@ export async function getCachedOrGenerateDailyGuidance(
   const ref = getDailyGuidanceRef(uid, dateKey)
   const snapshot = await ref.get()
 
-  if (snapshot.exists) {
+  if (snapshot.exists && !options?.force) {
     const data = snapshot.data() ?? {}
     await logInfo("divineapi.daily", "daily_horoscope_cache_hit", { uid, sign, dateKey })
 
@@ -300,6 +319,8 @@ export function buildAgentContext({
   natal,
   daily,
   compatibility,
+  astrologySnapshotCanonical,
+  localizedAstrology,
 }: {
   uid: string
   locale: Locale
@@ -309,6 +330,11 @@ export function buildAgentContext({
   natal?: NatalChartData
   daily?: DailyHoroscopeData
   compatibility?: CompatibilityData
+  astrologySnapshotCanonical?: Record<string, unknown>
+  localizedAstrology?: {
+    locale: "ro"
+    segments: Record<string, string>
+  }
 }): AgentContext {
   const usedAstrologyData: UsedAstrologyData = {
     natal: Boolean(natal),
@@ -338,6 +364,8 @@ export function buildAgentContext({
     natal,
     daily,
     compatibility,
+    astrologySnapshotCanonical,
+    localizedAstrology,
     usedAstrologyData,
   }
 }

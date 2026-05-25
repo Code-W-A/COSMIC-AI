@@ -6,7 +6,9 @@ import {
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { getCosmicProfile } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
-import { logError } from "@/lib/logging/logger"
+import { logError, logInfo } from "@/lib/logging/logger"
+import { ensureProfileBirthLocationForDivine } from "@/lib/location/profile-location"
+import { LocationResolverError } from "@/lib/location/resolver"
 import { DivineApiHttpError } from "@/lib/divineapi/client"
 import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
@@ -16,6 +18,9 @@ export const dynamic = "force-dynamic"
 export async function GET(request: Request) {
   const locale = getRequestLocale(request)
   const user = await requireUser(request)
+  const { searchParams } = new URL(request.url)
+  const force = searchParams.get("force") === "1"
+  const source = searchParams.get("source") ?? "unknown"
 
   if (isAuthResponse(user)) return user
 
@@ -38,7 +43,14 @@ export async function GET(request: Request) {
       )
     }
 
-    const sign = getProfileSunSign(profile)
+    const profileWithLocation = await ensureProfileBirthLocationForDivine({
+      uid: user.uid,
+      profile,
+      locale,
+      source: "api.astrology.daily",
+    })
+
+    const sign = getProfileSunSign(profileWithLocation)
 
     if (!sign) {
       return errorResponse(
@@ -48,12 +60,32 @@ export async function GET(request: Request) {
       )
     }
 
+    await logInfo("divineapi.daily", "divine.daily_generate_started", {
+      uid: user.uid,
+      force,
+      source,
+      sign,
+      hasCoordinates:
+        typeof profileWithLocation.latitude === "number" &&
+        typeof profileWithLocation.longitude === "number",
+      hasTimezoneIana: Boolean(profileWithLocation.timezoneIana),
+    })
+
     const { daily, dateKey, cacheHit } = await getCachedOrGenerateDailyGuidance(
       user.uid,
       sign,
-      profile,
-      locale
+      profileWithLocation,
+      locale,
+      { force }
     )
+
+    await logInfo("divineapi.daily", "divine.daily_generate_completed", {
+      uid: user.uid,
+      force,
+      source,
+      sign,
+      cacheHit,
+    })
 
     return successResponse({
       data: {
@@ -67,8 +99,18 @@ export async function GET(request: Request) {
   } catch (error) {
     await logError("divineapi.daily", "daily_horoscope_failed", {
       uid: user.uid,
+      force,
+      source,
       error,
     })
+
+    if (error instanceof LocationResolverError) {
+      return errorResponse(
+        error.code,
+        error.message,
+        error.code === "birth_location_unresolved" ? 400 : 502
+      )
+    }
 
     if (error instanceof DivineApiHttpError) {
       const code =

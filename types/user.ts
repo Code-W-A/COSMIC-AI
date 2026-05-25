@@ -72,6 +72,7 @@ export interface CosmicProfileDocument {
   birthDate: string
   birthTime: string
   birthPlace: string
+  birthPlacePlaceId?: string
   sexAtBirth: SexAtBirth
   mainFocus: MainFocus
   createdAt: FirestoreTimestampLike
@@ -104,7 +105,46 @@ export interface ReadingDocument {
   divineApiUsed?: boolean
   tokensUsed?: number
   isPremium: boolean
+  locale?: "ro" | "en"
+  astrologySnapshotCanonical?: Record<string, unknown>
+  astrologySnapshotLocalized?: {
+    locale: "ro"
+    segments: Record<string, string>
+  }
   createdAt: FirestoreTimestampLike
+}
+
+export interface PartnerDocument {
+  name?: string
+  birthDate: string
+  birthTime: string
+  birthPlace: string
+  birthPlacePlaceId?: string
+  sexAtBirth: SexAtBirth
+  latitude?: number
+  longitude?: number
+  timezoneIana?: string
+  timezoneOffsetAtBirth?: number
+  timezoneOffsetNow?: number
+  timezone?: string | number
+  natalSummary?: NatalChartData["summary"] | null
+  divineNatalRaw?: Record<string, unknown> | null
+  createdAt: FirestoreTimestampLike
+  updatedAt: FirestoreTimestampLike
+}
+
+export interface TranslationCacheDocument {
+  keyHash: string
+  segmentKey: string
+  sourceText: string
+  translatedText: string
+  sourceLocale: "en"
+  targetLocale: "ro"
+  provider: "openai"
+  model: string
+  hits: number
+  createdAt: FirestoreTimestampLike
+  updatedAt: FirestoreTimestampLike
 }
 
 export interface BillingEventDocument {

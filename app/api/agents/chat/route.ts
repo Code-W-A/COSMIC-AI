@@ -14,6 +14,7 @@ import { generateAgentResponse } from "@/lib/agents/openai"
 import type { AgentStructuredResponse } from "@/lib/agents/types"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { getCompatibilityData } from "@/lib/divineapi/compatibility"
+import { translateDivineContent } from "@/lib/divineapi/localization"
 import type { CompatibilityData, DailyHoroscopeData } from "@/lib/divineapi/types"
 import {
   enforceFreeConversationLimit,
@@ -31,6 +32,8 @@ import { incrementUsageForUser, UsageUserMissingError } from "@/lib/subscription
 import { isAgentType } from "@/types/agent"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { DivineApiHttpError } from "@/lib/divineapi/client"
+import { getResolvedBirthLocationFromSource, ensureProfileBirthLocationForDivine } from "@/lib/location/profile-location"
+import { LocationResolverError, resolveBirthLocation } from "@/lib/location/resolver"
 import {
   getAgentInputPolicyId,
   getPartnerInputCompleteness,
@@ -49,6 +52,9 @@ function buildReadingPayload({
   model,
   tokensUsed,
   isPremium,
+  locale,
+  astrologySnapshotCanonical,
+  astrologySnapshotLocalized,
 }: {
   agentType: string
   message: string
@@ -61,6 +67,12 @@ function buildReadingPayload({
   model?: string
   tokensUsed?: number
   isPremium: boolean
+  locale: "ro" | "en"
+  astrologySnapshotCanonical?: Record<string, unknown>
+  astrologySnapshotLocalized?: {
+    locale: "ro"
+    segments: Record<string, string>
+  }
 }) {
   return {
     agentType,
@@ -72,6 +84,9 @@ function buildReadingPayload({
     usedAstrologyData,
     model: model ?? null,
     tokensUsed: tokensUsed ?? null,
+    locale,
+    astrologySnapshotCanonical: astrologySnapshotCanonical ?? null,
+    astrologySnapshotLocalized: astrologySnapshotLocalized ?? null,
     divineApiUsed:
       usedAstrologyData.natal || usedAstrologyData.daily || usedAstrologyData.compatibility,
     isPremium,
@@ -170,12 +185,20 @@ export async function POST(request: Request) {
       )
     }
 
-    const natal = await ensureNatalChart(user.uid, profile, locale)
+    const profileWithLocation = await ensureProfileBirthLocationForDivine({
+      uid: user.uid,
+      profile,
+      locale,
+      source: "api.agents.chat",
+    })
+
+    const natal = await ensureNatalChart(user.uid, profileWithLocation, locale)
     let daily: DailyHoroscopeData | undefined
     let compatibility: CompatibilityData | undefined
     let aiResponse: AgentStructuredResponse | null = null
     let model: string | undefined
     let tokensUsed: number | undefined
+    const normalizedLocale: "ro" | "en" = locale === "ro" ? "ro" : "en"
 
     if (agentType === "daily_guidance") {
       const sign = natal.summary.sunSign ?? getProfileSunSign(profile)
@@ -188,7 +211,9 @@ export async function POST(request: Request) {
         )
       }
 
-      daily = (await getCachedOrGenerateDailyGuidance(user.uid, sign, profile, locale)).daily
+      daily = (
+        await getCachedOrGenerateDailyGuidance(user.uid, sign, profileWithLocation, locale)
+      ).daily
     }
 
     if (agentType === "compatibility") {
@@ -219,18 +244,57 @@ export async function POST(request: Request) {
         )
       }
 
+      const partnerBody =
+        body.partner && typeof body.partner === "object"
+          ? (body.partner as Record<string, unknown>)
+          : {}
+      const providedResolvedLocation = getResolvedBirthLocationFromSource(partnerBody)
+      const resolvedLocation =
+        providedResolvedLocation ??
+        (await resolveBirthLocation({
+          placeId:
+            typeof partnerBody.birthPlacePlaceId === "string"
+              ? partnerBody.birthPlacePlaceId
+              : undefined,
+          birthPlace: partner.birthPlace,
+          birthDate: partner.birthDate,
+          birthTime: partner.birthTime,
+          locale,
+          uid: user.uid,
+          source: "api.agents.chat.compatibility",
+        }))
+
+      const resolvedPartner = {
+        ...partner,
+        birthPlace: resolvedLocation.birthPlace,
+        birthPlacePlaceId: resolvedLocation.placeId,
+        latitude: resolvedLocation.latitude,
+        longitude: resolvedLocation.longitude,
+        timezoneIana: resolvedLocation.timezoneIana,
+        timezoneOffsetAtBirth: resolvedLocation.timezoneOffsetAtBirth,
+        timezone: resolvedLocation.timezoneOffsetAtBirth,
+      }
+
       compatibility = await getCompatibilityData({
         userNatal: natal,
-        partnerBirthDetails: partner,
-        userBirthDetails: profileToBirthDetails(profile),
+        partnerBirthDetails: resolvedPartner,
+        userBirthDetails: profileToBirthDetails(profileWithLocation),
         language: locale,
       })
       await saveCompatibilityData({
         uid: user.uid,
-        partner,
+        partner: resolvedPartner,
         compatibility,
       })
     }
+
+    const localizedContent = await translateDivineContent({
+      uid: user.uid,
+      locale: normalizedLocale,
+      natal,
+      daily,
+      compatibility,
+    })
 
     const context = buildAgentContext({
       uid: user.uid,
@@ -241,6 +305,8 @@ export async function POST(request: Request) {
       natal,
       daily,
       compatibility,
+      astrologySnapshotCanonical: localizedContent.astrologySnapshotCanonical,
+      localizedAstrology: localizedContent.astrologySnapshotLocalized,
     })
 
     await logInfo("usage", "agent_context_built", {
@@ -330,6 +396,9 @@ export async function POST(request: Request) {
         model,
         tokensUsed,
         isPremium,
+        locale: normalizedLocale,
+        astrologySnapshotCanonical: localizedContent.astrologySnapshotCanonical,
+        astrologySnapshotLocalized: localizedContent.astrologySnapshotLocalized,
       }))
     )
 
@@ -358,6 +427,14 @@ export async function POST(request: Request) {
     }
 
     await logError("usage", "agent_chat_failed", { uid: user.uid, agentType, error })
+
+    if (error instanceof LocationResolverError) {
+      return errorResponse(
+        error.code,
+        error.message,
+        error.code === "birth_location_unresolved" ? 400 : 502
+      )
+    }
 
     if (error instanceof DivineApiHttpError) {
       const code =

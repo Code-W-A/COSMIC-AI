@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "check:i18n": "node scripts/check-localization.mjs"
+    "check:i18n": "node scripts/check-localization.mjs",
+    "smoke:divine": "node scripts/smoke-divine-system.mjs",
+    "test:divine": "node scripts/smoke-divine-system.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

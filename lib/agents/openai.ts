@@ -59,6 +59,7 @@ function safeContextForPrompt(context: AgentContext) {
             summary: context.compatibility.summary,
           }
         : undefined,
+    localizedAstrology: context.localizedAstrology,
   }
 }
 

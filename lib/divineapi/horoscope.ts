@@ -39,11 +39,18 @@ export async function getDailyHoroscopeFromDivineApi({
     day: String(dateParts?.day ?? date.getUTCDate()),
     month: String(dateParts?.month ?? date.getUTCMonth() + 1),
     year: String(dateParts?.year ?? date.getUTCFullYear()),
+    h_day: "today",
     tzone: String(resolvedTimezone ?? config.DEFAULT_TZONE),
     lan: language ?? config.DEFAULT_LANGUAGE,
   }
 
-  await logInfo("divineapi.daily", "divineapi_daily_request_started", { sign })
+  await logInfo("divineapi.daily", "divineapi_daily_request_started", {
+    sign,
+    timezoneIana: timezoneIana ?? null,
+    resolvedTimezone: resolvedTimezone ?? null,
+    date: `${body.year}-${body.month}-${body.day}`,
+    language: body.lan,
+  })
 
   try {
     const raw = await divinePost<unknown>({
@@ -56,11 +63,17 @@ export async function getDailyHoroscopeFromDivineApi({
 
     await logInfo("divineapi.daily", "divineapi_daily_request_success", {
       sign: normalized.sign ?? sign,
+      hasCategories: Boolean(normalized.categories && Object.keys(normalized.categories).length > 0),
     })
 
     return normalized
   } catch (error) {
-    await logError("divineapi.daily", "divineapi_daily_request_failed", { sign, error })
+    await logError("divineapi.daily", "divineapi_daily_request_failed", {
+      sign,
+      timezoneIana: timezoneIana ?? null,
+      resolvedTimezone: resolvedTimezone ?? null,
+      error,
+    })
     throw error
   }
 }

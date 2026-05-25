@@ -2,7 +2,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore"
 import type Stripe from "stripe"
 
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
-import { BillingEnvError, assertBillingEnvReady } from "@/lib/billing/env"
+import { BillingEnvError, assertStripeWebhookEnvReady } from "@/lib/billing/env"
 import { getAdminDb } from "@/lib/firebase/admin"
 import { getBillingEventRef, getReportPurchaseRef, getUserDocument, getUserRef } from "@/lib/firebase/firestore"
 import { logError, logInfo, logWarn } from "@/lib/logging/logger"
@@ -363,7 +363,15 @@ async function handleInvoiceEvent(event: Stripe.Event, kind: "succeeded" | "fail
   }
 
   if (kind === "succeeded" && uid) {
-    await issueOblioInvoiceForStripeInvoice({ uid, invoice })
+    try {
+      await issueOblioInvoiceForStripeInvoice({ uid, invoice })
+    } catch (error) {
+      await logWarn("stripe.webhook", "oblio_invoice_issue_skipped", {
+        uid,
+        invoiceId: invoice.id,
+        error: getErrorMessage(error),
+      })
+    }
 
     await getUserRef(uid).set(
       {
@@ -483,7 +491,7 @@ async function handleInvoiceVoided(event: Stripe.Event) {
 
 export async function POST(request: Request) {
   try {
-    assertBillingEnvReady()
+    assertStripeWebhookEnvReady()
   } catch (error) {
     if (error instanceof BillingEnvError) {
       await logError("stripe.webhook", "billing_env_invalid", {

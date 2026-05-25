@@ -43,6 +43,14 @@ export function getReadingsCollection(uid: string) {
   return getUserRef(uid).collection("readings")
 }
 
+export function getTranslationCacheCollection(uid: string) {
+  return getUserRef(uid).collection("translationCache")
+}
+
+export function getTranslationCacheRef(uid: string, keyHash: string) {
+  return getTranslationCacheCollection(uid).doc(keyHash)
+}
+
 export function getConversationsCollection(uid: string) {
   return getUserRef(uid).collection("conversations")
 }
@@ -59,9 +67,17 @@ export function getDailyGuidanceRef(uid: string, dateKey: string) {
   return getUserRef(uid).collection("dailyGuidance").doc(dateKey)
 }
 
+export function getDailyGuidanceCollection(uid: string) {
+  return getUserRef(uid).collection("dailyGuidance")
+}
+
 export function getPartnerRef(uid: string, partnerId?: string) {
   const collection = getUserRef(uid).collection("partners")
   return partnerId ? collection.doc(partnerId) : collection.doc()
+}
+
+export function getPartnersCollection(uid: string) {
+  return getUserRef(uid).collection("partners")
 }
 
 export function getCompatibilityReadingsCollection(uid: string) {

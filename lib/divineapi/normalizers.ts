@@ -16,6 +16,7 @@ function asRecord(value: unknown) {
 
 function dataOf(raw: unknown) {
   const record = asRecord(raw)
+  if (Array.isArray(record.data)) return { data: record.data }
   return asRecord(record.data ?? record)
 }
 
@@ -116,6 +117,7 @@ function normalizeAspect(item: unknown): Aspect | null {
   const planet1 = firstString(
     aspect.planet1,
     aspect.planet_1,
+    aspect.planetOne,
     aspect.first_planet,
     aspect.from,
     aspect.p1_name
@@ -123,6 +125,7 @@ function normalizeAspect(item: unknown): Aspect | null {
   const planet2 = firstString(
     aspect.planet2,
     aspect.planet_2,
+    aspect.planetTwo,
     aspect.second_planet,
     aspect.to,
     aspect.p2_name
@@ -150,9 +153,16 @@ export function normalizeDailyHoroscopeResponse(raw: unknown): DailyHoroscopeDat
     raw,
     date: firstString(data.date),
     sign: firstString(data.sign, data.zodiac_sign),
-    horoscopeData: firstString(data.horoscope_data, data.horoscopeData, data.personal, data.overall),
+    horoscopeData: firstString(
+      data.horoscope_data,
+      data.horoscopeData,
+      data.personal,
+      data.overall,
+      categoriesSource.personal,
+      categoriesSource.overall
+    ),
     categories: {
-      love: firstString(categoriesSource.love, data.love),
+      love: firstString(categoriesSource.love, categoriesSource.relationship, data.love),
       career: firstString(categoriesSource.career, categoriesSource.profession, data.career),
       health: firstString(categoriesSource.health, data.health),
       emotions: firstString(categoriesSource.emotions, categoriesSource.emotion, data.emotions),
@@ -165,11 +175,17 @@ export function normalizeDailyHoroscopeResponse(raw: unknown): DailyHoroscopeDat
 export function normalizePlanets(raw: unknown): PlanetPlacement[] {
   const data = dataOf(raw)
   return findArray(data, [
+    "data",
+    "planetary.data",
     "planets",
     "planetary_positions",
     "planet_positions",
     "planet_positions.planets",
     "natal.planets",
+    "p1_data",
+    "p2_data",
+    "synastry.p1_data",
+    "synastry.p2_data",
   ])
     .map(normalizePlanet)
     .filter((planet): planet is PlanetPlacement => Boolean(planet))
@@ -177,14 +193,34 @@ export function normalizePlanets(raw: unknown): PlanetPlacement[] {
 
 export function normalizeHouses(raw: unknown): HouseCusp[] {
   const data = dataOf(raw)
-  return findArray(data, ["houses", "house_cusps", "cusps", "natal.houses"])
+  return findArray(data, [
+    "houses.data.houses",
+    "houses.data",
+    "houses",
+    "houses.houses",
+    "houseCusps",
+    "house_cusps",
+    "cusps",
+    "natal.houses",
+    "data.houses",
+  ])
     .map(normalizeHouse)
     .filter((house): house is HouseCusp => Boolean(house))
 }
 
 export function normalizeAspects(raw: unknown): Aspect[] {
   const data = dataOf(raw)
-  return findArray(data, ["aspects", "aspect_table", "aspectTable", "natal.aspects"])
+  return findArray(data, [
+    "data",
+    "aspects.data.aspects",
+    "aspects.data",
+    "aspects",
+    "aspects.aspects",
+    "aspect_table",
+    "aspectTable",
+    "natal.aspects",
+    "data.aspects",
+  ])
     .map(normalizeAspect)
     .filter((aspect): aspect is Aspect => Boolean(aspect))
 }
@@ -217,6 +253,11 @@ export function extractRisingSign(raw: unknown) {
   )
   if (direct) return direct
 
+  const ascendantPlacement = normalizePlanets(raw).find((planet) =>
+    ["ascendant", "asc"].includes(planet.name.toLowerCase())
+  )
+  if (ascendantPlacement?.sign) return ascendantPlacement.sign
+
   return normalizeHouses(raw)[0]?.sign
 }
 
@@ -236,8 +277,26 @@ export function normalizeNatalChartResponse(raw: unknown): NatalChartData {
       planets: normalizePlanets(raw),
       houses: normalizeHouses(raw),
       aspects: normalizeAspects(raw),
-      chartImageSvg: firstString(data.svg, data.chart_svg, chart.svg),
-      chartImageBase64: firstString(data.chart_base64, data.chartImageBase64, chart.base64),
+      chartImageSvg: firstString(
+        data.svg,
+        data.chart_svg,
+        data.chartSvg,
+        chart.svg,
+        getNested(data, "chart.svg"),
+        getNested(data, "chart.data.svg"),
+        getNested(data, "chart.data.chart_svg"),
+        getNested(data, "chart.data.chartSvg")
+      ),
+      chartImageBase64: firstString(
+        data.chart_base64,
+        data.chartImageBase64,
+        data.base64,
+        chart.base64,
+        getNested(data, "chart.base64"),
+        getNested(data, "chart.data.base64"),
+        getNested(data, "chart.data.chart_base64"),
+        getNested(data, "chart.data.chartImageBase64")
+      ),
       interpretations: Object.keys(interpretations).length ? interpretations : undefined,
       dominantElements: data.dominantElements ?? data.dominant_elements ?? data.elements,
       dominantModalities: data.dominantModalities ?? data.dominant_modalities ?? data.modalities,

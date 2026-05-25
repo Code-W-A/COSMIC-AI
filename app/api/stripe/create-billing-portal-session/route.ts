@@ -1,6 +1,6 @@
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
-import { BillingEnvError, assertBillingEnvReady } from "@/lib/billing/env"
+import { BillingEnvError, assertStripeEnvReady } from "@/lib/billing/env"
 import { getUserDocument } from "@/lib/firebase/firestore"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { getStripe } from "@/lib/stripe/server"
@@ -9,9 +9,6 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 function getAppUrl(request: Request) {
-  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
-  if (envUrl) return envUrl
-
   const forwardedProto = request.headers.get("x-forwarded-proto")
   const forwardedHost = request.headers.get("x-forwarded-host")
   const host = request.headers.get("host")
@@ -19,8 +16,12 @@ function getAppUrl(request: Request) {
 
   if (baseHost) {
     const proto = forwardedProto ?? (baseHost.includes("localhost") ? "http" : "https")
-    return `${proto}://${baseHost}`
+    const requestUrl = `${proto}://${baseHost}`
+    if (process.env.NODE_ENV !== "production") return requestUrl
   }
+
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (envUrl) return envUrl
 
   return "http://localhost:3000"
 }
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   if (isAuthResponse(user)) return user
 
   try {
-    assertBillingEnvReady()
+    assertStripeEnvReady()
     const userDocument = await getUserDocument(user.uid)
 
     if (!userDocument?.stripeCustomerId) {

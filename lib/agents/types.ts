@@ -54,5 +54,10 @@ export interface AgentContext {
   natal?: NatalChartData
   daily?: DailyHoroscopeData
   compatibility?: CompatibilityData
+  astrologySnapshotCanonical?: Record<string, unknown>
+  localizedAstrology?: {
+    locale: "ro"
+    segments: Record<string, string>
+  }
   usedAstrologyData: UsedAstrologyData
 }

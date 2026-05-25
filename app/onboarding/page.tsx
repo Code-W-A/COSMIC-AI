@@ -8,7 +8,6 @@ import {
   User,
   Calendar,
   Clock,
-  MapPin,
   Compass,
   ArrowRight,
   Sparkles,
@@ -23,13 +22,10 @@ import {
 
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppLogo } from "@/components/branding/app-logo"
+import { BirthPlaceAutocomplete } from "@/components/location/birth-place-autocomplete"
 import { apiFetch } from "@/lib/api/client"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
-import {
-  detectBrowserTimezone,
-  getCurrentSystemOffsetHours,
-  getOffsetHoursForTimeZoneAtLocalDateTime,
-} from "@/lib/divineapi/timezone"
+import type { ResolvedBirthLocation } from "@/lib/location/types"
 import {
   isMainFocus,
   isSexAtBirth,
@@ -365,6 +361,9 @@ export default function OnboardingPage() {
   const [birthDate, setBirthDate] = useState("")
   const [birthTime, setBirthTime] = useState("")
   const [birthPlace, setBirthPlace] = useState("")
+  const [resolvedBirthLocation, setResolvedBirthLocation] = useState<ResolvedBirthLocation | null>(
+    null
+  )
   const [sexAtBirth, setSexAtBirth] = useState<SexAtBirth | "">("")
   const [focus, setFocus] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -381,7 +380,13 @@ export default function OnboardingPage() {
             birthDate?: string
             birthTime?: string
             birthPlace?: string
+            birthPlacePlaceId?: string
             sexAtBirth?: string
+            latitude?: number
+            longitude?: number
+            timezoneIana?: string
+            timezoneOffsetAtBirth?: number
+            timezoneOffsetNow?: number
             mainFocus?: string
           } | null
           profileComplete?: boolean
@@ -396,6 +401,27 @@ export default function OnboardingPage() {
           if (typeof response.profile.birthDate === "string") setBirthDate(response.profile.birthDate)
           if (typeof response.profile.birthTime === "string") setBirthTime(response.profile.birthTime)
           if (typeof response.profile.birthPlace === "string") setBirthPlace(response.profile.birthPlace)
+          if (
+            typeof response.profile.birthPlace === "string" &&
+            typeof response.profile.birthPlacePlaceId === "string" &&
+            typeof response.profile.latitude === "number" &&
+            typeof response.profile.longitude === "number" &&
+            typeof response.profile.timezoneIana === "string" &&
+            typeof response.profile.timezoneOffsetAtBirth === "number" &&
+            typeof response.profile.timezoneOffsetNow === "number"
+          ) {
+            setResolvedBirthLocation({
+              placeId: response.profile.birthPlacePlaceId,
+              birthPlace: response.profile.birthPlace,
+              latitude: response.profile.latitude,
+              longitude: response.profile.longitude,
+              timezoneIana: response.profile.timezoneIana,
+              timezoneOffsetAtBirth: response.profile.timezoneOffsetAtBirth,
+              timezoneOffsetNow: response.profile.timezoneOffsetNow,
+            })
+          } else {
+            setResolvedBirthLocation(null)
+          }
           if (isSexAtBirth(response.profile.sexAtBirth)) setSexAtBirth(response.profile.sexAtBirth)
           if (isMainFocus(response.profile.mainFocus)) setFocus(response.profile.mainFocus)
         }
@@ -427,6 +453,7 @@ export default function OnboardingPage() {
         birthDate.trim().length > 0 &&
         birthTime.trim().length > 0 &&
         birthPlace.trim().length > 0 &&
+        resolvedBirthLocation !== null &&
         sexAtBirth.trim().length > 0
       )
     }
@@ -443,15 +470,13 @@ export default function OnboardingPage() {
       setIsSubmitting(true)
 
       try {
-        const timezoneIana = detectBrowserTimezone()
-        const timezoneOffsetNow = getCurrentSystemOffsetHours()
-        const timezoneOffsetAtBirth =
-          timezoneIana && birthDate && birthTime
-            ? getOffsetHoursForTimeZoneAtLocalDateTime(timezoneIana, {
-                date: birthDate,
-                time: birthTime,
-              })
-            : undefined
+        if (!resolvedBirthLocation) {
+          throw new Error(
+            isRo
+              ? "Selectează un loc valid din sugestii pentru a continua."
+              : "Select a valid location from suggestions to continue."
+          )
+        }
 
         await apiFetch("/api/user/profile", {
           method: "POST",
@@ -459,11 +484,14 @@ export default function OnboardingPage() {
             name,
             birthDate,
             birthTime,
-            birthPlace,
+            birthPlace: resolvedBirthLocation.birthPlace,
+            birthPlacePlaceId: resolvedBirthLocation.placeId,
             sexAtBirth,
-            timezoneIana,
-            timezoneOffsetNow,
-            timezoneOffsetAtBirth,
+            latitude: resolvedBirthLocation.latitude,
+            longitude: resolvedBirthLocation.longitude,
+            timezoneIana: resolvedBirthLocation.timezoneIana,
+            timezoneOffsetNow: resolvedBirthLocation.timezoneOffsetNow,
+            timezoneOffsetAtBirth: resolvedBirthLocation.timezoneOffsetAtBirth,
             mainFocus: focus,
           },
         })
@@ -649,14 +677,32 @@ export default function OnboardingPage() {
                       onChange={setBirthTime}
                       delay={0.1}
                     />
-                    <FormField
-                      label={isRo ? "Locul nașterii" : "Birth Place"}
-                      icon={MapPin}
-                      placeholder={isRo ? "Oraș, județ sau țară" : "City, State or Country"}
-                      value={birthPlace}
-                      onChange={setBirthPlace}
-                      delay={0.15}
-                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.15 }}
+                    >
+                      <BirthPlaceAutocomplete
+                        label={isRo ? "Locul nașterii" : "Birth Place"}
+                        placeholder={isRo ? "Oraș, județ sau țară" : "City, State or Country"}
+                        value={birthPlace}
+                        birthDate={birthDate}
+                        birthTime={birthTime}
+                        required
+                        onValueChange={setBirthPlace}
+                        onResolvedChange={setResolvedBirthLocation}
+                        initialResolvedLocation={resolvedBirthLocation}
+                        messages={{
+                          loadingSuggestions: isRo ? "Se caută locații..." : "Searching locations...",
+                          loadingResolution: isRo ? "Se validează locația..." : "Resolving location...",
+                          missingBirthDateTime:
+                            isRo
+                              ? "Completează data și ora nașterii pentru validarea locației."
+                              : "Enter birth date and time to validate the location.",
+                          noResults: isRo ? "Nicio sugestie." : "No suggestions found.",
+                        }}
+                      />
+                    </motion.div>
                     <motion.div
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}

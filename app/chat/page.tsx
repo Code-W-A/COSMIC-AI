@@ -21,6 +21,7 @@ import { AgentAvatar } from "@/components/agents/agent-avatar"
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppLogo } from "@/components/branding/app-logo"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ApiClientError, apiFetch } from "@/lib/api/client"
 import { agentAvatarCatalog } from "@/lib/agents/avatar-catalog"
 import { logout } from "@/lib/firebase/auth"
@@ -57,7 +58,8 @@ interface Message {
   agentType?: AgentType
   ctas?: Array<{
     label: string
-    href: string
+    href?: string
+    action?: "generate_divine_data"
     variant?: "primary" | "secondary"
   }>
 }
@@ -114,6 +116,46 @@ function TypingIndicator() {
   )
 }
 
+function ConversationsSkeletonList() {
+  return (
+    <div className="space-y-2">
+      {[0, 1, 2, 3].map((item) => (
+        <div
+          key={item}
+          className="rounded-xl border border-border bg-[rgba(255,255,255,0.02)] px-3 py-2"
+        >
+          <Skeleton className="h-4 w-3/5" />
+          <Skeleton className="mt-2 h-3 w-full" />
+          <Skeleton className="mt-1.5 h-3 w-4/5" />
+          <Skeleton className="mt-2 h-2.5 w-1/3" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MessagesSkeletonList() {
+  return (
+    <div className="space-y-4">
+      {[0, 1, 2].map((item) => (
+        <div key={item} className={`flex ${item % 2 === 0 ? "justify-start" : "justify-end"}`}>
+          <div
+            className={`max-w-[88%] rounded-2xl border px-5 py-4 sm:max-w-[75%] ${
+              item % 2 === 0
+                ? "border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)]"
+                : "border-[rgba(109,75,255,0.3)] bg-[rgba(109,75,255,0.2)]"
+            }`}
+          >
+            <Skeleton className="h-3.5 w-44" />
+            <Skeleton className="mt-2 h-3.5 w-56" />
+            <Skeleton className="mt-2 h-3.5 w-36" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function CosmicChatPage() {
   const router = useRouter()
   const localizedPath = useLocalizedPath()
@@ -134,6 +176,7 @@ export default function CosmicChatPage() {
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
+  const [isGeneratingDivineData, setIsGeneratingDivineData] = useState(false)
   const [isPremium, setIsPremium] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -350,6 +393,12 @@ export default function CosmicChatPage() {
         chatError instanceof ApiClientError &&
         chatError.status === 403 &&
         (chatError.code === "usage_limit_reached" || chatError.code === "request_failed" || chatError.code === "upgrade_required")
+      const isProfileIncomplete =
+        chatError instanceof ApiClientError &&
+        (chatError.code === "cosmic_profile_missing" || chatError.code === "profile_incomplete")
+      const canGenerateDivineData =
+        chatError instanceof ApiClientError &&
+        (chatError.code === "natal_chart_missing_sun_sign" || chatError.code === "divineapi_unavailable")
 
       const aiMsg: Message = {
         id: `local-error-${Date.now()}`,
@@ -359,6 +408,10 @@ export default function CosmicChatPage() {
             ? isRo
               ? "Ai atins limita gratuită lunară. Poți face upgrade la Premium sau debloca raportul one-off."
               : "You reached your free monthly limit. You can upgrade to Premium or unlock the one-off report."
+            : isProfileIncomplete
+              ? t("chat.divine.profileIncompletePrompt")
+              : canGenerateDivineData
+                ? t("chat.divine.generatePrompt")
             : chatError instanceof Error
               ? chatError.message
               : isRo
@@ -379,6 +432,22 @@ export default function CosmicChatPage() {
                 variant: "secondary",
               },
             ]
+          : isProfileIncomplete
+            ? [
+                {
+                  label: t("chat.divine.goToOnboarding"),
+                  href: localizedPath("/onboarding"),
+                  variant: "primary",
+                },
+              ]
+            : canGenerateDivineData
+              ? [
+                  {
+                    label: t("chat.divine.generateNow"),
+                    action: "generate_divine_data",
+                    variant: "primary",
+                  },
+                ]
           : undefined,
       }
       setMessages((prev) => [...prev, aiMsg])
@@ -387,23 +456,63 @@ export default function CosmicChatPage() {
     }
   }
 
+  async function handleGenerateDivineData() {
+    if (isGeneratingDivineData) return
+
+    setIsGeneratingDivineData(true)
+    try {
+      const payload = await apiFetch<{
+        success: true
+        generated: { natal: boolean; daily: boolean }
+        cached: { natal: boolean; daily: boolean }
+      }>("/api/astrology/generate-all", {
+        method: "POST",
+        body: { source: "chat_cta" },
+      })
+
+      const natalStatus = payload.generated.natal ? t("chat.divine.generateStatus.natalGenerated") : t("chat.divine.generateStatus.natalCached")
+      const dailyStatus = payload.generated.daily ? t("chat.divine.generateStatus.dailyGenerated") : t("chat.divine.generateStatus.dailyCached")
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-divine-ready-${Date.now()}`,
+          role: "assistant",
+          content: `${t("chat.divine.generateSuccess")}\n\n• ${natalStatus}\n• ${dailyStatus}\n\n${t("chat.divine.compatibilityHint")}`,
+          agent: `${activeAgentPersonaName} · ${activeAgentLabel}`,
+          agentType: activeAgent,
+        },
+      ])
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : t("chat.divine.generateFailed")
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-divine-failed-${Date.now()}`,
+          role: "assistant",
+          content: `${t("chat.divine.generateFailed")}\n\n${message}`,
+          agent: `${activeAgentPersonaName} · ${activeAgentLabel}`,
+          agentType: activeAgent,
+          ctas: [
+            {
+              label: t("chat.divine.goToOnboarding"),
+              href: localizedPath("/onboarding"),
+              variant: "secondary",
+            },
+          ],
+        },
+      ])
+    } finally {
+      setIsGeneratingDivineData(false)
+    }
+  }
+
   function handleKeyDown(event: React.KeyboardEvent) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       void handleSend()
     }
-  }
-
-  function formatConversationTime(value: string | null) {
-    if (!value) return ""
-    const date = new Date(value)
-    if (Number.isNaN(date.valueOf())) return ""
-    return new Intl.DateTimeFormat(isRo ? "ro-RO" : "en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(date)
   }
 
   function renderComposer(variant: "centered" | "bottom") {
@@ -546,7 +655,7 @@ export default function CosmicChatPage() {
 
           <div className="hide-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto">
             {loadingConversations ? (
-              <p className="text-xs text-muted-foreground">{isRo ? "Se încarcă..." : "Loading..."}</p>
+              <ConversationsSkeletonList />
             ) : conversations.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {isRo ? "Nicio conversație salvată încă." : "No saved conversations yet."}
@@ -564,8 +673,6 @@ export default function CosmicChatPage() {
                   }`}
                 >
                   <p className="truncate text-sm font-medium text-foreground">{conversation.title}</p>
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{conversation.lastMessagePreview}</p>
-                  <p className="mt-1 text-[10px] text-muted-foreground">{formatConversationTime(conversation.updatedAt)}</p>
                 </button>
               ))
             )}
@@ -717,7 +824,7 @@ export default function CosmicChatPage() {
               <div ref={scrollRef} className="flex-1 overflow-y-auto">
                 <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-6 sm:px-6">
                   {loadingMessages ? (
-                    <p className="text-sm text-muted-foreground">{isRo ? "Se încarcă conversația..." : "Loading conversation..."}</p>
+                    <MessagesSkeletonList />
                   ) : (
                     messages.map((msg) => (
                       <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -748,17 +855,33 @@ export default function CosmicChatPage() {
                             {msg.ctas && msg.ctas.length > 0 && (
                               <div className="mt-3 flex flex-wrap gap-2">
                                 {msg.ctas.map((cta) => (
-                                  <Link
-                                    key={`${msg.id}-${cta.href}-${cta.label}`}
-                                    href={cta.href}
-                                    className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                                      cta.variant === "primary"
-                                        ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
-                                        : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
-                                    }`}
-                                  >
-                                    {cta.label}
-                                  </Link>
+                                  cta.action === "generate_divine_data" ? (
+                                    <button
+                                      key={`${msg.id}-${cta.action}-${cta.label}`}
+                                      type="button"
+                                      disabled={isGeneratingDivineData}
+                                      onClick={() => void handleGenerateDivineData()}
+                                      className={`rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-70 ${
+                                        cta.variant === "primary"
+                                          ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
+                                          : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
+                                      }`}
+                                    >
+                                      {isGeneratingDivineData ? t("chat.divine.generateLoading") : cta.label}
+                                    </button>
+                                  ) : cta.href ? (
+                                    <Link
+                                      key={`${msg.id}-${cta.href}-${cta.label}`}
+                                      href={cta.href}
+                                      className={`rounded-full px-4 py-2 text-xs font-semibold ${
+                                        cta.variant === "primary"
+                                          ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
+                                          : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
+                                      }`}
+                                    >
+                                      {cta.label}
+                                    </Link>
+                                  ) : null
                                 ))}
                               </div>
                             )}

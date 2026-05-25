@@ -17,6 +17,7 @@ export type BirthDetails = {
   birthDate: string
   birthTime: string
   birthPlace: string
+  birthPlacePlaceId?: string
   sexAtBirth: "male" | "female"
   latitude?: number
   longitude?: number

@@ -49,6 +49,18 @@ const apiErrorMessages: Record<string, Record<Locale, string>> = {
     en: "Required analysis input data is missing.",
     ro: "Lipsesc date necesare pentru analiză.",
   },
+  birth_location_unresolved: {
+    en: "Birth location could not be resolved. Select a valid location from suggestions.",
+    ro: "Locul nașterii nu a putut fi rezolvat. Selectează o locație validă din sugestii.",
+  },
+  location_autocomplete_failed: {
+    en: "Unable to load location suggestions right now.",
+    ro: "Nu am putut încărca sugestiile de locație acum.",
+  },
+  location_resolve_failed: {
+    en: "Unable to resolve birth location right now.",
+    ro: "Nu am putut rezolva locul nașterii acum.",
+  },
   invalid_profile: {
     en: "Profile data is invalid.",
     ro: "Datele profilului sunt invalide.",
@@ -112,6 +124,18 @@ const apiErrorMessages: Record<string, Record<Locale, string>> = {
   divineapi_unavailable: {
     en: "Astrology provider is unavailable right now. Try again later.",
     ro: "Providerul de astrologie nu este disponibil acum. Încearcă din nou mai târziu.",
+  },
+  divine_overview_failed: {
+    en: "Unable to load Divine data overview.",
+    ro: "Nu am putut încărca sumarul datelor Divine.",
+  },
+  partners_list_failed: {
+    en: "Unable to load partners.",
+    ro: "Nu am putut încărca partenerii.",
+  },
+  partner_save_failed: {
+    en: "Unable to save partner.",
+    ro: "Nu am putut salva partenerul.",
   },
 }
 
