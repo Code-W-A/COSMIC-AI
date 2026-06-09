@@ -2,14 +2,25 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { Loader2, LogOut, Sparkles } from "lucide-react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { LogOut, Sparkles } from "lucide-react"
 
+import {
+  AccountBillingSkeleton,
+  AccountDailySkeleton,
+  AccountHeroFocusSkeleton,
+  AccountHeroNameSkeleton,
+  AccountHeroPlanSkeleton,
+  AccountInsightsSkeleton,
+  AccountLastReadingSkeleton,
+  AccountProfileFormSkeleton,
+} from "@/components/account/account-skeletons"
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { BirthPlaceAutocomplete } from "@/components/location/birth-place-autocomplete"
 import { apiFetch } from "@/lib/api/client"
 import { logout } from "@/lib/firebase/auth"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
+import { formatZodiacSign } from "@/lib/i18n/zodiac"
 import type { ResolvedBirthLocation } from "@/lib/location/types"
 import { isSexAtBirth, type MainFocus, type SexAtBirth } from "@/types/user"
 
@@ -163,7 +174,6 @@ type AccountSectionTab =
   | "overview"
   | "cosmic_profile"
   | "daily_guidance"
-  | "compatibility"
   | "billing"
 type SubscriptionStatusPayload = {
   subscriptionStatus: string
@@ -178,6 +188,7 @@ const IS_DEV = process.env.NODE_ENV !== "production"
 export default function AccountPage() {
   const localizedPath = useLocalizedPath()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { locale, t } = useTranslations()
   const isRo = locale === "ro"
 
@@ -207,6 +218,7 @@ export default function AccountPage() {
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatusPayload | null>(
     null
   )
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
 
   const [actionLoading, setActionLoading] = useState({
     generateAll: false,
@@ -247,6 +259,18 @@ export default function AccountPage() {
     () => partners.find((partner) => partner.id === selectedPartnerId) ?? null,
     [partners, selectedPartnerId]
   )
+
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    if (
+      tab === "overview" ||
+      tab === "cosmic_profile" ||
+      tab === "daily_guidance" ||
+      tab === "billing"
+    ) {
+      setActiveSectionTab(tab)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     let mounted = true
@@ -392,6 +416,9 @@ export default function AccountPage() {
       .catch(() => {
         if (!mounted) return
         setSubscriptionStatus(null)
+      })
+      .finally(() => {
+        if (mounted) setSubscriptionLoading(false)
       })
 
     return () => {
@@ -789,7 +816,6 @@ export default function AccountPage() {
               ["overview", t("account.tabs.overview")],
               ["cosmic_profile", t("account.tabs.cosmicProfile")],
               ["daily_guidance", t("account.tabs.dailyGuidance")],
-              ["compatibility", t("account.tabs.compatibility")],
               ["billing", t("account.tabs.billing")],
             ] as Array<[AccountSectionTab, string]>).map(([tab, label]) => (
               <button
@@ -813,30 +839,47 @@ export default function AccountPage() {
                 <article className="rounded-2xl border border-white/10 bg-black/25 p-4 md:col-span-2">
                   <p className="text-xs uppercase tracking-[0.18em] text-cosmic-lavender">{t("account.hero.welcomeEyebrow")}</p>
                   <h2 className="mt-2 text-2xl font-semibold text-foreground">
-                    {t("account.hero.welcomeTitle")} {profile?.name || t("account.hero.traveler")}
+                    {t("account.hero.welcomeTitle")}{" "}
+                    {loading ? (
+                      <AccountHeroNameSkeleton />
+                    ) : (
+                      profile?.name || t("account.hero.traveler")
+                    )}
                   </h2>
                   <p className="mt-2 text-sm text-muted-foreground">{t("account.hero.welcomeSubtitle")}</p>
                 </article>
                 <article className="rounded-2xl border border-white/10 bg-black/30 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.hero.currentPlan")}</p>
-                  <p className="mt-2 text-lg font-medium text-foreground">{planLabel()}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {subscriptionStatus?.currentPeriodEnd
-                      ? `${t("account.hero.nextRenewal")} ${formatDate(subscriptionStatus.currentPeriodEnd)}`
-                      : "—"}
-                  </p>
+                  {subscriptionLoading ? (
+                    <AccountHeroPlanSkeleton />
+                  ) : (
+                    <>
+                      <p className="mt-2 text-lg font-medium text-foreground">{planLabel()}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {subscriptionStatus?.currentPeriodEnd
+                          ? `${t("account.hero.nextRenewal")} ${formatDate(subscriptionStatus.currentPeriodEnd)}`
+                          : "—"}
+                      </p>
+                    </>
+                  )}
                 </article>
                 <article className="rounded-2xl border border-white/10 bg-black/30 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.hero.currentFocus")}</p>
-                  <p className="mt-2 text-lg font-medium text-foreground">{focusLabel(form.mainFocus)}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{t("account.hero.focusHint")}</p>
+                  {loading ? (
+                    <AccountHeroFocusSkeleton />
+                  ) : (
+                    <>
+                      <p className="mt-2 text-lg font-medium text-foreground">{focusLabel(form.mainFocus)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{t("account.hero.focusHint")}</p>
+                    </>
+                  )}
                 </article>
               </div>
 
               <article className="rounded-2xl border border-white/10 bg-black/25 p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.hero.lastReading")}</p>
                 {readingsLoading ? (
-                  <p className="mt-2 text-sm text-muted-foreground">{t("common.loading")}</p>
+                  <AccountLastReadingSkeleton />
                 ) : readings.length === 0 ? (
                   <p className="mt-2 text-sm text-muted-foreground">{t("account.readings.empty")}</p>
                 ) : (
@@ -857,6 +900,7 @@ export default function AccountPage() {
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
+                      data-testid="account-generate-all-button"
                       onClick={() => void runGenerateAll()}
                       disabled={actionLoading.generateAll}
                       className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground disabled:opacity-60"
@@ -865,6 +909,7 @@ export default function AccountPage() {
                     </button>
                     <button
                       type="button"
+                      data-testid="account-generate-natal-button"
                       disabled={actionLoading.natal || !divineOverview?.profileComplete}
                       onClick={() => void runNatal(!divineOverview?.natal.generated)}
                       className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground disabled:opacity-60"
@@ -880,6 +925,7 @@ export default function AccountPage() {
 
                 {feedback && (
                   <p
+                    data-testid={`account-feedback-${feedback.tone}`}
                     className={`mt-4 rounded-lg border px-3 py-2 text-sm ${
                       feedback.tone === "success"
                         ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
@@ -891,10 +937,7 @@ export default function AccountPage() {
                 )}
 
                 {divineLoading ? (
-                  <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {t("account.insights.loading")}
-                  </div>
+                  <AccountInsightsSkeleton />
                 ) : (
                   <div className="mt-4 space-y-4">
                     <div className="rounded-xl border border-white/10 bg-black/30 p-4">
@@ -986,53 +1029,6 @@ export default function AccountPage() {
 
                 {divineError && <p className="mt-4 text-sm text-red-300">{divineError}</p>}
               </div>
-
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
-                <h3 className="text-base font-semibold text-foreground">{t("account.readings.title")}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{t("account.readings.subtitle")}</p>
-                {readingsLoading ? (
-                  <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {t("account.readings.loading")}
-                  </div>
-                ) : readings.length === 0 ? (
-                  <p className="mt-4 text-sm text-muted-foreground">{t("account.readings.empty")}</p>
-                ) : (
-                  <div className="mt-4 grid gap-3">
-                    {readings.slice(0, 4).map((reading) => (
-                      <button
-                        key={reading.id}
-                        type="button"
-                        onClick={() => void openReading(reading.id)}
-                        className="w-full rounded-xl border border-white/10 bg-black/25 p-4 text-left hover:bg-black/35"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-foreground">{reading.question}</p>
-                          <p className="text-xs text-muted-foreground">{formatDate(reading.createdAt)}</p>
-                        </div>
-                        <p className="mt-2 text-sm text-muted-foreground">{reading.answerPreview}</p>
-                      </button>
-                    ))}
-                    {nextReadingsCursor && (
-                      <button
-                        type="button"
-                        onClick={() => void loadMoreReadings()}
-                        disabled={readingsLoadingMore}
-                        className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground disabled:opacity-60"
-                      >
-                        {readingsLoadingMore ? t("common.loading") : t("account.readings.loadMore")}
-                      </button>
-                    )}
-                  </div>
-                )}
-                {selectedReading && (
-                  <div className="mt-4 rounded-xl border border-white/10 bg-black/30 p-4">
-                    <p className="text-sm font-semibold text-foreground">{selectedReading.question}</p>
-                    <p className="mt-2 text-sm text-muted-foreground">{selectedReading.answer}</p>
-                  </div>
-                )}
-                {readingsError && <p className="mt-3 text-sm text-red-300">{readingsError}</p>}
-              </div>
             </section>
           )}
 
@@ -1041,10 +1037,7 @@ export default function AccountPage() {
               <h2 className="text-lg font-semibold text-foreground">{t("account.profile.title")}</h2>
               <p className="mt-2 text-sm text-muted-foreground">{t("account.profile.subtitle")}</p>
             {loading ? (
-              <div className="mt-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                {t("account.profile.loading")}
-              </div>
+              <AccountProfileFormSkeleton />
             ) : (
               <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
                 <label className="text-sm text-muted-foreground">
@@ -1164,6 +1157,7 @@ export default function AccountPage() {
                   <p className="mt-2 text-sm text-muted-foreground">{t("account.daily.subtitle")}</p>
                 </div>
                 <button
+                  data-testid="account-daily-generate-button"
                   type="button"
                   disabled={actionLoading.daily || !divineOverview?.profileComplete}
                   onClick={() => void runDaily(!divineOverview?.daily.generated)}
@@ -1177,11 +1171,16 @@ export default function AccountPage() {
                 </button>
               </div>
 
+              {divineLoading ? (
+                <AccountDailySkeleton />
+              ) : (
+                <>
               <article className="rounded-2xl border border-white/10 bg-black/30 p-5">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.daily.mainReading")}</p>
                 <p className="mt-3 text-sm leading-7 text-foreground">{divineOverview?.daily.horoscopeData ?? "—"}</p>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  {t("account.daily.localDate")} {divineOverview?.daily.date ?? "—"} · {t("account.daily.sign")} {divineOverview?.daily.sign ?? "—"}
+                  {t("account.daily.localDate")} {divineOverview?.daily.date ?? "—"} · {t("account.daily.sign")}{" "}
+                  {formatZodiacSign(divineOverview?.daily.sign, locale)}
                 </p>
               </article>
 
@@ -1198,275 +1197,19 @@ export default function AccountPage() {
                   </article>
                 ))}
               </div>
-            </section>
-          )}
-
-          {activeSectionTab === "compatibility" && (
-            <section className="space-y-4 rounded-3xl border border-white/10 bg-[radial-gradient(120%_120%_at_40%_0%,rgba(139,92,246,0.20),rgba(10,10,20,0.94)_62%)] p-6 shadow-[0_0_70px_rgba(109,75,255,0.14)]">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">{t("account.compatibility.title")}</h2>
-                <p className="mt-2 text-sm text-muted-foreground">{t("account.compatibility.subtitle")}</p>
-              </div>
-
-              <article className="rounded-2xl border border-violet-300/20 bg-black/30 p-5 shadow-[0_0_36px_rgba(139,92,246,0.16)]">
-                <h3 className="text-base font-semibold text-foreground">
-                  {t("account.compatibility.withPartner")} {compatibilityPartnerName}
-                </h3>
-                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  {t("account.compatibility.summaryLabel")}
-                </p>
-                <p className="mt-3 text-sm leading-7 text-foreground">
-                  {divineOverview?.synastry.summary?.emotional
-                    ? String(divineOverview.synastry.summary.emotional)
-                    : divineOverview?.synastry.summary?.communication
-                      ? String(divineOverview.synastry.summary.communication)
-                      : t("account.compatibility.emptySummary")}
-                </p>
-                {!hasCompatibilityReading && (
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    {t("account.compatibility.emptySummaryHint")}
-                  </p>
-                )}
-              </article>
-
-              <div className="rounded-2xl border border-violet-300/20 bg-black/25 p-5 shadow-[0_0_28px_rgba(139,92,246,0.12)]">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {hasSavedPartners
-                    ? t("account.compatibility.choosePartner")
-                    : t("account.compatibility.addPartner")}
-                </h3>
-
-                {hasSavedPartners ? (
-                  <div className="mt-4 space-y-4">
-                    <label className="text-sm text-muted-foreground">
-                      {t("account.compatibility.choosePartner")}
-                      <select
-                        value={selectedPartnerId}
-                        onChange={(event) => setSelectedPartnerId(event.target.value)}
-                        className="mt-2 w-full rounded-xl border border-violet-300/20 bg-black/40 px-3 py-2 text-foreground"
-                      >
-                        {partners.map((partner) => (
-                          <option key={partner.id} value={partner.id}>
-                            {partner.name || `${partner.birthDate} · ${partner.birthPlace}`}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    {selectedSavedPartner && (
-                      <div className="rounded-xl border border-violet-300/15 bg-black/30 p-4 text-xs text-muted-foreground">
-                        <p className="text-sm font-medium text-foreground">
-                          {t("account.compatibility.previewName")} {selectedSavedPartner.name || "—"}
-                        </p>
-                        <p className="mt-2">
-                          {t("account.compatibility.previewBirthDate")} {selectedSavedPartner.birthDate || "—"}
-                        </p>
-                        <p>
-                          {t("account.compatibility.previewBirthTime")} {selectedSavedPartner.birthTime || "—"}
-                        </p>
-                        <p>
-                          {t("account.compatibility.previewBirthPlace")} {selectedSavedPartner.birthPlace || "—"}
-                        </p>
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => void runSynastry("saved")}
-                      disabled={isSavedPartnerGenerateDisabled}
-                      className="w-full rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-4 py-2.5 text-sm font-semibold text-foreground disabled:opacity-60"
-                    >
-                      {actionLoading.synastry
-                        ? t("account.insights.processing")
-                        : t("account.compatibility.generate")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetNewPartnerForm()
-                        setIsAddingNewPartner(true)
-                      }}
-                      className="text-sm font-medium text-violet-200 hover:text-violet-100"
-                    >
-                      {t("account.compatibility.addNewPartner")}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-xl border border-violet-300/15 bg-black/30 p-4">
-                    <p className="text-sm text-foreground">{t("account.compatibility.noSavedPartnersTitle")}</p>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {t("account.compatibility.noSavedPartnersSubtitle")}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetNewPartnerForm()
-                        setIsAddingNewPartner(true)
-                      }}
-                      className="mt-4 w-full rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-4 py-2.5 text-sm font-semibold text-foreground"
-                    >
-                      {t("account.compatibility.addPartner")}
-                    </button>
-                  </div>
-                )}
-
-                {isAddingNewPartner && (
-                  <div className="mt-4 rounded-xl border border-violet-300/20 bg-black/35 p-4">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <label className="text-sm text-muted-foreground md:col-span-2">
-                        {t("account.compatibility.partnerName")}
-                        <input
-                          value={newPartnerForm.name}
-                          onChange={(event) =>
-                            setNewPartnerForm((prev) => ({ ...prev, name: event.target.value }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-violet-300/15 bg-black/30 px-3 py-2 text-foreground"
-                        />
-                      </label>
-                      <label className="text-sm text-muted-foreground">
-                        {t("account.field.birthDate")}
-                        <input
-                          type="date"
-                          value={newPartnerForm.birthDate}
-                          onChange={(event) =>
-                            setNewPartnerForm((prev) => ({ ...prev, birthDate: event.target.value }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-violet-300/15 bg-black/30 px-3 py-2 text-foreground"
-                        />
-                      </label>
-                      <label className="text-sm text-muted-foreground">
-                        {t("account.field.birthTime")}
-                        <input
-                          type="time"
-                          value={newPartnerForm.birthTime}
-                          onChange={(event) =>
-                            setNewPartnerForm((prev) => ({ ...prev, birthTime: event.target.value }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-violet-300/15 bg-black/30 px-3 py-2 text-foreground"
-                        />
-                      </label>
-                      <BirthPlaceAutocomplete
-                        label={t("account.field.birthPlace")}
-                        placeholder={isRo ? "Oraș, județ sau țară" : "City, State or Country"}
-                        value={newPartnerForm.birthPlace}
-                        birthDate={newPartnerForm.birthDate}
-                        birthTime={newPartnerForm.birthTime}
-                        required
-                        onValueChange={(nextValue) =>
-                          setNewPartnerForm((prev) => ({ ...prev, birthPlace: nextValue }))
-                        }
-                        onResolvedChange={setSynastryResolvedLocation}
-                        initialResolvedLocation={synastryResolvedLocation}
-                        messages={{
-                          loadingSuggestions: isRo ? "Se caută locații..." : "Searching locations...",
-                          loadingResolution: isRo ? "Se validează locația..." : "Resolving location...",
-                          missingBirthDateTime:
-                            isRo
-                              ? "Completează data și ora nașterii pentru validarea locației."
-                              : "Enter birth date and time to validate the location.",
-                          noResults: isRo ? "Nicio sugestie." : "No suggestions found.",
-                        }}
-                      />
-                      <label className="text-sm text-muted-foreground md:col-span-2">
-                        {t("account.field.sexAtBirth")}
-                        <select
-                          value={newPartnerForm.sexAtBirth}
-                          onChange={(event) =>
-                            setNewPartnerForm((prev) => ({
-                              ...prev,
-                              sexAtBirth:
-                                event.target.value === "male" || event.target.value === "female"
-                                  ? event.target.value
-                                  : "",
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border border-violet-300/15 bg-black/30 px-3 py-2 text-foreground"
-                        >
-                          <option value="">{t("account.field.sexPlaceholder")}</option>
-                          <option value="male">{t("account.field.male")}</option>
-                          <option value="female">{t("account.field.female")}</option>
-                        </select>
-                      </label>
-                      <label className="md:col-span-2 text-xs text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          className="mr-1"
-                          checked={newPartnerForm.savePartner}
-                          onChange={(event) =>
-                            setNewPartnerForm((prev) => ({ ...prev, savePartner: event.target.checked }))
-                          }
-                        />
-                        {t("account.compatibility.saveForFuture")}
-                      </label>
-                    </div>
-                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                      <button
-                        type="button"
-                        onClick={() => void runSynastry("new")}
-                        disabled={isNewPartnerGenerateDisabled}
-                        className="rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-4 py-2.5 text-sm font-semibold text-foreground disabled:opacity-60"
-                      >
-                        {actionLoading.synastry
-                          ? t("account.insights.processing")
-                          : t("account.compatibility.saveAndGenerate")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsAddingNewPartner(false)
-                          resetNewPartnerForm()
-                        }}
-                        className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-foreground"
-                      >
-                        {t("account.compatibility.cancel")}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {hasCompatibilityReading && (
-                <details className="rounded-2xl border border-white/10 bg-black/25 p-5">
-                  <summary className="cursor-pointer text-sm font-semibold text-foreground">{t("account.compatibility.technicalDetails")}</summary>
-                  <div className="mt-3 space-y-3">
-                    {(synastryP1.length > 0 || synastryP2.length > 0) && (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {[
-                          ["P1", synastryP1],
-                          ["P2", synastryP2],
-                        ].map(([label, placements]) => (
-                          <div key={String(label)} className="rounded-lg border border-white/10 bg-black/30 p-3">
-                            <p className="mb-2 text-xs font-medium text-muted-foreground">{String(label)}</p>
-                            <div className="space-y-1 text-xs">
-                              {(placements as DisplayRecord[]).slice(0, 16).map((placement, index) => (
-                                <p key={`${String(label)}-${index}`}>
-                                  {displayString(placement.planet ?? placement.name)} · {displayString(placement.sign)} · {t("account.insights.house")} {displayString(placement.house)}
-                                </p>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {synastryPartnerPlanets.length > 0 && (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {synastryPartnerPlanets.map((planet, index) => (
-                          <div key={`${displayString(planet.name)}-${index}`} className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs">
-                            {displayString(planet.name)} · {displayString(planet.sign)} · {t("account.insights.house")} {displayString(planet.house)}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </details>
+                </>
               )}
             </section>
           )}
+
 
           {activeSectionTab === "billing" && (
             <section className="space-y-4 rounded-3xl border border-white/10 bg-[radial-gradient(120%_120%_at_30%_0%,rgba(109,75,255,0.22),rgba(10,10,20,0.94)_62%)] p-6 shadow-[0_0_70px_rgba(109,75,255,0.14)]">
               <h2 className="text-lg font-semibold text-foreground">{t("account.billing.title")}</h2>
               <p className="text-sm text-muted-foreground">{t("account.billing.subtitle")}</p>
+              {subscriptionLoading ? (
+                <AccountBillingSkeleton />
+              ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 <article className="rounded-2xl border border-white/10 bg-black/25 p-4">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.billing.currentPlan")}</p>
@@ -1495,6 +1238,7 @@ export default function AccountPage() {
                   </div>
                 </article>
               </div>
+              )}
             </section>
           )}
         </div>

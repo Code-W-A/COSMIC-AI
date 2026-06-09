@@ -60,7 +60,7 @@ export function Footer() {
             <Link href={localizedPath("/")} className="mb-5 inline-flex items-center gap-2">
               <AppLogo size={32} className="ring-1 ring-white/20" />
               <span className="text-lg font-bold text-[#F5F2FF] tracking-tight">
-                Cosmic AI
+                AstroAI 24/7
               </span>
             </Link>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-[#B8B2D9]">
@@ -112,7 +112,7 @@ export function Footer() {
         {/* Bottom */}
         <div className="mt-16 flex flex-col items-center justify-between gap-4 border-t border-[rgba(255,255,255,0.06)] pt-8 md:flex-row">
           <p className="text-xs text-[#B8B2D9]/60">
-            &copy; {new Date().getFullYear()} Cosmic AI.{" "}
+            &copy; {new Date().getFullYear()} AstroAI 24/7.{" "}
             {isRo ? "Toate drepturile rezervate." : "All rights reserved."}
           </p>
           <div className="flex gap-5">

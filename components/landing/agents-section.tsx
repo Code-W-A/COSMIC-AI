@@ -436,7 +436,7 @@ export function AgentsSection() {
           <h2 className="text-4xl font-bold tracking-tight text-[#F5F2FF] text-balance sm:text-5xl lg:text-6xl">
             {isRo ? "Cunoaște-ți" : "Meet Your"}{" "}
             <span className="text-gradient-cosmic">
-              {isRo ? "Agenții AI Cosmici" : "Cosmic AI Agents"}
+              {isRo ? "Agenții AI Cosmici" : "AstroAI 24/7 Agents"}
             </span>
           </h2>
 

@@ -111,7 +111,7 @@ export function SubscriptionCard() {
         <div className="relative z-10 mx-auto max-w-2xl">
           <Link href={localizedPath("/chat")} className="mb-8 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <Sparkles className="h-4 w-4 text-cosmic-lavender" />
-            {isRo ? "Înapoi la Cosmic AI" : "Back to Cosmic AI"}
+            {isRo ? "Înapoi la AstroAI 24/7" : "Back to AstroAI 24/7"}
           </Link>
 
           <div className="rounded-3xl border border-border bg-[#0D0820]/70 p-6 shadow-xl shadow-[#6D4BFF]/10 backdrop-blur-xl sm:p-8">

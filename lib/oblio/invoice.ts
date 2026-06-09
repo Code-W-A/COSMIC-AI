@@ -64,7 +64,7 @@ function getPlanLabel(invoice: Stripe.Invoice) {
   const lineDescription = invoice.lines.data.find((line) => line.description)?.description
   if (lineDescription) return lineDescription
 
-  return "Cosmic AI Subscription"
+  return "AstroAI 24/7 Subscription"
 }
 
 function toCurrencyValue(valueInCents?: number | null) {

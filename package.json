@@ -9,7 +9,12 @@
     "lint": "eslint .",
     "check:i18n": "node scripts/check-localization.mjs",
     "smoke:divine": "node scripts/smoke-divine-system.mjs",
-    "test:divine": "node scripts/smoke-divine-system.mjs"
+    "test:divine": "node scripts/smoke-divine-system.mjs",
+    "emulators": "firebase emulators:start --only auth,firestore --project demo-astroai-e2e",
+    "e2e:seed": "E2E_USE_FIREBASE_EMULATORS=1 FIREBASE_PROJECT_ID=demo-astroai-e2e FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/e2e/seed.mjs",
+    "e2e:reset": "E2E_USE_FIREBASE_EMULATORS=1 FIREBASE_PROJECT_ID=demo-astroai-e2e FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/e2e/reset.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -68,6 +73,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^22",
     "@types/react": "^19",

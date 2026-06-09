@@ -263,6 +263,7 @@ export async function getCachedOrGenerateDailyGuidance(
     horoscopeData: daily.horoscopeData ?? null,
     categories: toFirestoreData(daily.categories ?? {}),
     divineHoroscopeRaw: daily.raw,
+    sourceLocale: locale ?? "en",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   })

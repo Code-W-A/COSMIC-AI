@@ -13,7 +13,7 @@ const baseFaqs = [
   {
     question: "Do I need my exact birth time?",
     answer:
-      "For the most accurate readings, having your exact birth time is ideal. However, Cosmic AI can still provide meaningful insights using just your birth date and location. The more precise your details, the more personalized your guidance will be.",
+      "For the most accurate readings, having your exact birth time is ideal. However, AstroAI 24/7 can still provide meaningful insights using just your birth date and location. The more precise your details, the more personalized your guidance will be.",
   },
   {
     question: "Are the readings personalized?",
@@ -31,14 +31,14 @@ const baseFaqs = [
       "The Premium plan unlocks 120 AI questions per month, complete birth chart interpretation, all specialized agents (love, career, daily guidance), and personalized daily cosmic messages.",
   },
   {
-    question: "How does Cosmic AI work?",
+    question: "How does AstroAI 24/7 work?",
     answer:
-      "Cosmic AI combines real astrology data — birth chart calculations, planetary transits, and horoscope algorithms — with advanced AI interpretation. When you ask a question, the AI analyzes your chart data and generates a personalized, conversational response grounded in astrological principles.",
+      "AstroAI 24/7 combines real astrology data — birth chart calculations, planetary transits, and horoscope algorithms — with advanced AI interpretation. When you ask a question, the AI analyzes your chart data and generates a personalized, conversational response grounded in astrological principles.",
   },
   {
     question: "Is this based on real astrology data?",
     answer:
-      "Yes. Cosmic AI uses astronomical calculations for planetary positions, house placements, and aspects based on your birth details. This is not randomly generated — it is rooted in the same data professional astrologers use, interpreted through AI for accessibility and depth.",
+      "Yes. AstroAI 24/7 uses astronomical calculations for planetary positions, house placements, and aspects based on your birth details. This is not randomly generated — it is rooted in the same data professional astrologers use, interpreted through AI for accessibility and depth.",
   },
 ]
 
@@ -50,7 +50,7 @@ export function FAQSection() {
         {
           question: "Am nevoie de ora exactă a nașterii?",
           answer:
-            "Pentru cea mai mare acuratețe, ora exactă este ideală. Totuși, Cosmic AI poate oferi insight-uri utile și doar cu data și locul nașterii.",
+            "Pentru cea mai mare acuratețe, ora exactă este ideală. Totuși, AstroAI 24/7 poate oferi insight-uri utile și doar cu data și locul nașterii.",
         },
         {
           question: "Interpretările sunt personalizate?",
@@ -68,9 +68,9 @@ export function FAQSection() {
             "Premium include 120 întrebări AI/lună, interpretare completă a hărții natale, agenți specializați și mesaje zilnice personalizate.",
         },
         {
-          question: "Cum funcționează Cosmic AI?",
+          question: "Cum funcționează AstroAI 24/7?",
           answer:
-            "Cosmic AI combină date astrologice reale cu interpretare AI. Când întrebi ceva, AI analizează contextul tău și oferă un răspuns conversațional personalizat.",
+            "AstroAI 24/7 combină date astrologice reale cu interpretare AI. Când întrebi ceva, AI analizează contextul tău și oferă un răspuns conversațional personalizat.",
         },
         {
           question: "Este bazat pe date astrologice reale?",

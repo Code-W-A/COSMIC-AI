@@ -13,11 +13,11 @@ export function AppLogo({ size = 32, className = "", rounded = true }: AppLogoPr
     <span
       className={`relative inline-flex items-center justify-center overflow-hidden ${rounded ? "rounded-full" : "rounded-lg"} ${className}`}
       style={{ width: size, height: size }}
-      aria-label="Cosmic AI"
+      aria-label="AstroAI 24/7"
     >
       <Image
         src="/branding/logo-new.png"
-        alt="Cosmic AI logo"
+        alt="AstroAI 24/7 logo"
         fill
         sizes={`${size}px`}
         className="object-cover"

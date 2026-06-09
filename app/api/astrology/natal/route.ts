@@ -1,7 +1,9 @@
+import { FieldValue } from "firebase-admin/firestore"
+
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
 import { ensureNatalChart } from "@/lib/agents/context"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
-import { getCosmicProfile } from "@/lib/firebase/firestore"
+import { getCosmicProfile, getCosmicProfileRef } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { ensureProfileBirthLocationForDivine } from "@/lib/location/profile-location"
@@ -11,6 +13,23 @@ import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+
+function useE2EMocks() {
+  return process.env.E2E_MOCK_EXTERNALS === "1"
+}
+
+function getMockNatalSummary() {
+  return {
+    sunSign: "Gemini",
+    moonSign: "Virgo",
+    risingSign: "Libra",
+    planets: [{ name: "Sun", sign: "Gemini", house: "10", degree: "12.5°" }],
+    houses: [{ house: "1", sign: "Libra" }],
+    aspects: [{ aspect: "Trine", between: "Sun-Moon" }],
+    chartImageSvg:
+      "<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><rect width='320' height='320' fill='#100a23'/><circle cx='160' cy='160' r='120' stroke='#8B5CFF' stroke-width='2' fill='none'/><text x='160' y='170' text-anchor='middle' fill='#F5F2FF' font-size='20'>E2E Chart</text></svg>",
+  }
+}
 
 export async function POST(request: Request) {
   const locale = getRequestLocale(request)
@@ -54,6 +73,37 @@ export async function POST(request: Request) {
       locale,
       source: "api.astrology.natal",
     })
+
+    if (useE2EMocks()) {
+      const summary = getMockNatalSummary()
+      await getCosmicProfileRef(user.uid).set(
+        {
+          divineNatalRaw: { mocked: true, source: "e2e" },
+          natalSummary: summary,
+          sunSign: summary.sunSign,
+          moonSign: summary.moonSign,
+          risingSign: summary.risingSign,
+          natalChartGeneratedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+
+      return successResponse({
+        data: {
+          generated: true,
+          force,
+          sunSign: summary.sunSign,
+          moonSign: summary.moonSign,
+          risingSign: summary.risingSign,
+          planets: summary.planets,
+          houses: summary.houses,
+          aspects: summary.aspects,
+          chartImageSvg: summary.chartImageSvg,
+          chartImageBase64: null,
+        },
+      })
+    }
 
     await logInfo("divineapi.natal", "divine.natal_generate_started", {
       uid: user.uid,

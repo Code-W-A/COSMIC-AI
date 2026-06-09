@@ -9,21 +9,24 @@ import { Testimonials } from "@/components/landing/testimonials"
 import { FAQSection } from "@/components/landing/faq-section"
 import { FinalCTA } from "@/components/landing/final-cta"
 import { Footer } from "@/components/landing/footer"
+import { LandingAuthRedirect } from "@/components/landing/landing-auth-redirect"
 
 export default function Page() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background">
-      <Navigation />
-      <HeroSection />
-      <HowItWorks />
-      <AgentsSection />
-      <ChatPreview />
-      <CosmicData />
-      <PricingSection />
-      <Testimonials />
-      <FAQSection />
-      <FinalCTA />
-      <Footer />
-    </main>
+    <LandingAuthRedirect>
+      <main className="relative min-h-screen overflow-hidden bg-background">
+        <Navigation />
+        <HeroSection />
+        <HowItWorks />
+        <AgentsSection />
+        <ChatPreview />
+        <CosmicData />
+        <PricingSection />
+        <Testimonials />
+        <FAQSection />
+        <FinalCTA />
+        <Footer />
+      </main>
+    </LandingAuthRedirect>
   )
 }

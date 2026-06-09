@@ -7,7 +7,7 @@ import { useTranslations } from "@/lib/i18n/client"
 const baseTestimonials = [
   {
     quote:
-      "Cosmic AI gave me clarity I never found anywhere else. The Love Agent helped me understand my relationship patterns on a deeper level.",
+      "AstroAI 24/7 gave me clarity I never found anywhere else. The Love Agent helped me understand my relationship patterns on a deeper level.",
     name: "Elena M.",
     role: "Pisces Sun, Scorpio Moon",
     stars: 5,
@@ -42,7 +42,7 @@ export function Testimonials() {
     ? [
         {
           quote:
-            "Cosmic AI mi-a oferit claritate pe care nu am găsit-o în altă parte. Agentul Love m-a ajutat să înțeleg mai bine tiparele mele relaționale.",
+            "AstroAI 24/7 mi-a oferit claritate pe care nu am găsit-o în altă parte. Agentul Love m-a ajutat să înțeleg mai bine tiparele mele relaționale.",
           name: "Elena M.",
           role: "Pești Soare, Scorpion Lună",
           stars: 5,

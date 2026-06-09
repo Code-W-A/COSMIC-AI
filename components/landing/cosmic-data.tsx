@@ -79,8 +79,8 @@ export function CosmicData() {
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-[#B8B2D9] text-pretty">
             {isRo
-              ? "Cosmic AI combină date astrologice reale cu interpretare AI personalizată pentru o experiență de ghidaj spiritual mai relevantă."
-              : "Cosmic AI blends real astrology data with personalized AI interpretation to create a more meaningful spiritual guidance experience."}
+              ? "AstroAI 24/7 combină date astrologice reale cu interpretare AI personalizată pentru o experiență de ghidaj spiritual mai relevantă."
+              : "AstroAI 24/7 blends real astrology data with personalized AI interpretation to create a more meaningful spiritual guidance experience."}
           </p>
         </motion.div>
 

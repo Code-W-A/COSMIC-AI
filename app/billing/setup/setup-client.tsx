@@ -262,7 +262,7 @@ export function BillingSetupClientPage() {
               : "Complete once, then we reuse these details for every paid invoice."}
           </p>
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <form onSubmit={handleSubmit} data-testid="billing-setup-form" className="mt-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block sm:col-span-2">
                 <span className="mb-2 block text-sm font-medium text-foreground">
@@ -420,6 +420,7 @@ export function BillingSetupClientPage() {
 
             <button
               type="submit"
+              data-testid="billing-save-button"
               disabled={loading || saving}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >

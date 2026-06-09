@@ -1,9 +1,17 @@
+import { agentTypes } from "@/types/agent"
 import type { AgentStructuredResponse } from "@/lib/agents/types"
 
 export const agentResponseJsonSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["answer", "cards", "followUpQuestions"],
+  required: [
+    "answer",
+    "cards",
+    "followUpQuestions",
+    "suggestedAgent",
+    "agentHandoffReason",
+    "suggestedQuestion",
+  ],
   properties: {
     answer: {
       type: "string",
@@ -59,6 +67,16 @@ export const agentResponseJsonSchema = {
         type: "string",
       },
     },
+    suggestedAgent: {
+      type: ["string", "null"],
+      enum: [...agentTypes, null],
+    },
+    agentHandoffReason: {
+      type: ["string", "null"],
+    },
+    suggestedQuestion: {
+      type: ["string", "null"],
+    },
   },
 } as const
 
@@ -77,10 +95,26 @@ export function validateAgentResponse(value: unknown): AgentStructuredResponse {
     throw new Error("AI response did not match the expected format.")
   }
 
+  const suggestedAgent =
+    response.suggestedAgent === null || agentTypes.includes(response.suggestedAgent as (typeof agentTypes)[number])
+      ? response.suggestedAgent
+      : null
+  const agentHandoffReason =
+    response.agentHandoffReason === null || typeof response.agentHandoffReason === "string"
+      ? response.agentHandoffReason
+      : null
+  const suggestedQuestion =
+    response.suggestedQuestion === null || typeof response.suggestedQuestion === "string"
+      ? response.suggestedQuestion
+      : null
+
   return {
     answer: response.answer,
     cards: response.cards,
     followUpQuestions: response.followUpQuestions,
+    suggestedAgent,
+    agentHandoffReason,
+    suggestedQuestion,
   }
 }
 
@@ -106,5 +140,8 @@ export function buildMissingPartnerResponse(): AgentStructuredResponse {
       "What city and country were they born in?",
       "Do you know their birth time?",
     ],
+    suggestedAgent: null,
+    agentHandoffReason: null,
+    suggestedQuestion: null,
   }
 }

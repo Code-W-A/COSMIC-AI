@@ -6,6 +6,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import OpenAI from "openai"
 
 import { getTranslationCacheRef } from "@/lib/firebase/firestore"
+import type { Locale } from "@/lib/i18n/locale"
 import { logError, logInfo, logWarn } from "@/lib/logging/logger"
 import type { CompatibilityData, DailyHoroscopeData, NatalChartData } from "@/lib/divineapi/types"
 
@@ -383,6 +384,63 @@ function buildCanonicalSnapshot({
   }
 
   return snapshot
+}
+
+function useE2EMocks() {
+  return process.env.E2E_MOCK_EXTERNALS === "1"
+}
+
+export function applyLocalizedSegmentsToDaily(
+  daily: DailyHoroscopeData,
+  segments: Record<string, string>
+): DailyHoroscopeData {
+  const categories = daily.categories ? { ...daily.categories } : undefined
+
+  if (categories) {
+    for (const category of Object.keys(categories)) {
+      const translated = segments[`daily.categories.${category}`]
+      if (translated) {
+        categories[category as keyof typeof categories] = translated
+      }
+    }
+  }
+
+  return {
+    ...daily,
+    horoscopeData: segments["daily.horoscopeData"] ?? daily.horoscopeData,
+    categories,
+  }
+}
+
+export async function getLocalizedDailyHoroscope(
+  uid: string,
+  daily: DailyHoroscopeData,
+  locale: Locale
+): Promise<DailyHoroscopeData> {
+  if (locale !== "ro") return daily
+
+  if (useE2EMocks()) {
+    const sourceSegments = extractTranslatableSegments({ daily })
+    const mockSegments = Object.fromEntries(
+      Object.entries(sourceSegments).map(([key, value]) => [
+        key,
+        key === "daily.horoscopeData" ? `Ghidaj zilnic mock: ${value}` : `[RO] ${value}`,
+      ])
+    )
+    return applyLocalizedSegmentsToDaily(daily, mockSegments)
+  }
+
+  const localized = await translateDivineContent({
+    uid,
+    locale: "ro",
+    daily,
+  })
+
+  if (!localized.astrologySnapshotLocalized?.segments) {
+    return daily
+  }
+
+  return applyLocalizedSegmentsToDaily(daily, localized.astrologySnapshotLocalized.segments)
 }
 
 export async function translateDivineContent({

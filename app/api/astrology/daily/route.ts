@@ -1,19 +1,30 @@
+import { FieldValue } from "firebase-admin/firestore"
+
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
 import {
   getCachedOrGenerateDailyGuidance,
   getProfileSunSign,
 } from "@/lib/agents/context"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
-import { getCosmicProfile } from "@/lib/firebase/firestore"
+import { getCosmicProfile, getDailyGuidanceRef } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { ensureProfileBirthLocationForDivine } from "@/lib/location/profile-location"
 import { LocationResolverError } from "@/lib/location/resolver"
 import { DivineApiHttpError } from "@/lib/divineapi/client"
+import { getLocalizedDailyHoroscope } from "@/lib/divineapi/localization"
 import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+
+function useE2EMocks() {
+  return process.env.E2E_MOCK_EXTERNALS === "1"
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10)
+}
 
 export async function GET(request: Request) {
   const locale = getRequestLocale(request)
@@ -60,6 +71,44 @@ export async function GET(request: Request) {
       )
     }
 
+    if (useE2EMocks()) {
+      const dateKey = todayKey()
+      const daily = {
+        raw: { mocked: true, source: "e2e" },
+        sign,
+        date: dateKey,
+        horoscopeData: "Mock daily guidance for E2E verification.",
+        categories: {
+          travel: "Plan short trips only.",
+          emotions: "Stay grounded.",
+          health: "Keep hydration consistent.",
+          career: "Focus on one core priority.",
+        },
+      }
+      await getDailyGuidanceRef(user.uid, dateKey).set(
+        {
+          sign: daily.sign,
+          date: daily.date,
+          horoscopeData: daily.horoscopeData,
+          categories: daily.categories,
+          divineHoroscopeRaw: daily.raw,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+      const localizedDaily = await getLocalizedDailyHoroscope(user.uid, daily, locale)
+      return successResponse({
+        data: {
+          sign: localizedDaily.sign ?? sign,
+          date: localizedDaily.date ?? dateKey,
+          horoscopeData: localizedDaily.horoscopeData,
+          categories: localizedDaily.categories,
+          cacheHit: false,
+        },
+      })
+    }
+
     await logInfo("divineapi.daily", "divine.daily_generate_started", {
       uid: user.uid,
       force,
@@ -79,6 +128,8 @@ export async function GET(request: Request) {
       { force }
     )
 
+    const localizedDaily = await getLocalizedDailyHoroscope(user.uid, daily, locale)
+
     await logInfo("divineapi.daily", "divine.daily_generate_completed", {
       uid: user.uid,
       force,
@@ -89,10 +140,10 @@ export async function GET(request: Request) {
 
     return successResponse({
       data: {
-        sign: daily.sign ?? sign,
-        date: daily.date ?? dateKey,
-        horoscopeData: daily.horoscopeData,
-        categories: daily.categories,
+        sign: localizedDaily.sign ?? sign,
+        date: localizedDaily.date ?? dateKey,
+        horoscopeData: localizedDaily.horoscopeData,
+        categories: localizedDaily.categories,
         cacheHit,
       },
     })

@@ -2,7 +2,7 @@ import "server-only"
 
 import OpenAI from "openai"
 
-import { cosmicAiSystemPrompt, getAgentInstruction } from "@/lib/agents/prompts"
+import { cosmicAiSystemPrompt, getAgentInstruction, getAvailableAgentsCatalog } from "@/lib/agents/prompts"
 import { agentResponseJsonSchema, validateAgentResponse } from "@/lib/agents/response-format"
 import type { AgentContext, AgentStructuredResponse } from "@/lib/agents/types"
 
@@ -32,6 +32,10 @@ function getOpenAIModel() {
   return process.env.OPENAI_MODEL || "gpt-5.4-mini"
 }
 
+function useE2EMocks() {
+  return process.env.E2E_MOCK_EXTERNALS === "1"
+}
+
 function safeContextForPrompt(context: AgentContext) {
   return {
     locale: context.locale,
@@ -41,6 +45,7 @@ function safeContextForPrompt(context: AgentContext) {
     inputPolicy: context.inputPolicy,
     inputCompleteness: context.inputCompleteness,
     agentInstruction: getAgentInstruction(context.agentType),
+    availableAgents: getAvailableAgentsCatalog(),
     natalSummary: context.natal?.summary,
     dailyHoroscope: context.daily
       ? {
@@ -66,6 +71,35 @@ function safeContextForPrompt(context: AgentContext) {
 export async function generateAgentResponse(
   context: AgentContext
 ): Promise<{ response: AgentStructuredResponse; model: string; tokensUsed?: number }> {
+  if (useE2EMocks()) {
+    const suggestsCareerHandoff =
+      context.agentType === "love" &&
+      /\b(work|career|job|vocat|carier|profes)/i.test(context.message)
+
+    return {
+      model: "mock-e2e-model",
+      tokensUsed: 42,
+      response: {
+        answer: `Mocked ${context.agentType} answer for: ${context.message}`,
+        cards: [
+          {
+            type: "reflection",
+            title: "E2E Insight",
+            description: `Agent ${context.agentType} responded in ${context.locale}.`,
+          },
+        ],
+        followUpQuestions: ["What would you like to explore next?"],
+        suggestedAgent: suggestsCareerHandoff ? "career_purpose" : null,
+        agentHandoffReason: suggestsCareerHandoff
+          ? "Career and purpose questions are Nova's specialty."
+          : null,
+        suggestedQuestion: suggestsCareerHandoff
+          ? "What career path fits my natal chart?"
+          : null,
+      },
+    }
+  }
+
   const model = getOpenAIModel()
   const result = await getOpenAI().responses.create({
     model,

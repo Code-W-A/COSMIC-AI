@@ -25,6 +25,9 @@ export interface AgentStructuredResponse {
   answer: string
   cards: AgentCard[]
   followUpQuestions: string[]
+  suggestedAgent: AgentType | null
+  agentHandoffReason: string | null
+  suggestedQuestion: string | null
 }
 
 export interface UsedAstrologyData {

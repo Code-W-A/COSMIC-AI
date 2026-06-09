@@ -1,3 +1,5 @@
+import { FieldValue } from "firebase-admin/firestore"
+
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
 import {
   ensureNatalChart,
@@ -6,7 +8,7 @@ import {
 } from "@/lib/agents/context"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { DivineApiHttpError } from "@/lib/divineapi/client"
-import { getCosmicProfile } from "@/lib/firebase/firestore"
+import { getCosmicProfile, getCosmicProfileRef, getDailyGuidanceRef } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { ensureProfileBirthLocationForDivine } from "@/lib/location/profile-location"
@@ -15,6 +17,14 @@ import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+
+function useE2EMocks() {
+  return process.env.E2E_MOCK_EXTERNALS === "1"
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10)
+}
 
 export async function POST(request: Request) {
   const locale = getRequestLocale(request)
@@ -60,6 +70,67 @@ export async function POST(request: Request) {
     if (source === "chat_cta") {
       await logInfo("chat", "chat.cta_generate_clicked", {
         uid: user.uid,
+      })
+    }
+
+    if (useE2EMocks()) {
+      const hadNatal = Boolean((profile as { natalSummary?: unknown }).natalSummary)
+      const dateKey = todayKey()
+      const profileRef = getCosmicProfileRef(user.uid)
+      const dailyRef = getDailyGuidanceRef(user.uid, dateKey)
+      const dailySnapshot = await dailyRef.get()
+      const sign = getProfileSunSign(profileWithLocation) || "Gemini"
+
+      await profileRef.set(
+        {
+          divineNatalRaw: { mocked: true, source: "e2e" },
+          natalSummary: {
+            sunSign: sign,
+            moonSign: "Virgo",
+            risingSign: "Libra",
+            planets: [{ name: "Sun", sign, house: "10" }],
+            houses: [{ house: "1", sign: "Libra" }],
+            aspects: [{ aspect: "Trine", between: "Sun-Moon" }],
+          },
+          sunSign: sign,
+          moonSign: "Virgo",
+          risingSign: "Libra",
+          natalChartGeneratedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+
+      await dailyRef.set(
+        {
+          sign,
+          date: dateKey,
+          horoscopeData: "Mock daily guidance for generate-all E2E flow.",
+          categories: {
+            travel: "Plan ahead.",
+            emotions: "Stay calm.",
+            health: "Keep balance.",
+            career: "Prioritize deep work.",
+          },
+          divineHoroscopeRaw: { mocked: true, source: "e2e" },
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+
+      return successResponse({
+        generated: {
+          natal: !hadNatal,
+          daily: !dailySnapshot.exists,
+        },
+        cached: {
+          natal: hadNatal,
+          daily: dailySnapshot.exists,
+        },
+        compatibilitySupported: false,
+        compatibilityReason:
+          "Compatibility generation requires partner birth details and is not included in generate-all.",
       })
     }
 

@@ -43,7 +43,7 @@ export function Navigation() {
         <Link href={homeHref} className="flex items-center gap-2">
           <AppLogo size={32} className="ring-1 ring-white/20" />
           <span className="text-lg font-bold text-[#F5F2FF] tracking-tight">
-            Cosmic AI
+            AstroAI 24/7
           </span>
         </Link>
 

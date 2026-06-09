@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   metadataBase: process.env.NEXT_PUBLIC_APP_URL
     ? new URL(process.env.NEXT_PUBLIC_APP_URL)
     : new URL('http://localhost:3000'),
-  title: 'Cosmic AI — Your Personal Astrology AI Agent',
+  title: 'AstroAI 24/7 — Your Personal Astrology AI Agent',
   description:
     'Ask questions about love, purpose, compatibility, and your birth chart — and receive personalized answers powered by astrology data and AI.',
   generator: 'v0.app',
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     apple: '/apple-icon.png',
   },
   openGraph: {
-    title: 'Cosmic AI — Your Personal Astrology AI Agent',
+    title: 'AstroAI 24/7 — Your Personal Astrology AI Agent',
     description:
       'Ask questions about love, purpose, compatibility, and your birth chart — and receive personalized answers powered by astrology data and AI.',
     images: [
@@ -40,13 +40,13 @@ export const metadata: Metadata = {
         url: '/branding/logo-new.png',
         width: 512,
         height: 512,
-        alt: 'Cosmic AI logo',
+        alt: 'AstroAI 24/7 logo',
       },
     ],
   },
   twitter: {
     card: 'summary',
-    title: 'Cosmic AI — Your Personal Astrology AI Agent',
+    title: 'AstroAI 24/7 — Your Personal Astrology AI Agent',
     description:
       'Ask questions about love, purpose, compatibility, and your birth chart — and receive personalized answers powered by astrology data and AI.',
     images: ['/branding/logo-new.png'],

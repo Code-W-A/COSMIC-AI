@@ -199,6 +199,7 @@ export function BirthPlaceAutocomplete({
       </label>
       <div className="relative">
         <input
+          data-testid="location-autocomplete-input"
           type="text"
           value={value}
           placeholder={placeholder}
@@ -231,6 +232,7 @@ export function BirthPlaceAutocomplete({
                 <button
                   key={suggestion.placeId}
                   type="button"
+                  data-testid="location-autocomplete-suggestion"
                   className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
                   onClick={() => {
                     onValueChange(suggestion.description)

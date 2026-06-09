@@ -127,6 +127,26 @@
     mask-composite: exclude;
     pointer-events: none;
   }
+  .cosmic-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(245, 242, 255, 0.55) rgba(255, 255, 255, 0.06);
+  }
+  .cosmic-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .cosmic-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+  }
+  .cosmic-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(245, 242, 255, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+  }
+  .cosmic-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(245, 242, 255, 0.72);
+    border-color: rgba(182, 156, 255, 0.45);
+  }
 }
 
 @keyframes float {

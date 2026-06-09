@@ -167,6 +167,7 @@ function ReportPageContent() {
           ) : status?.canGenerate ? (
             <button
               type="button"
+              data-testid="report-consume-button"
               onClick={() => void consumeReportPurchase()}
               disabled={generating || generated}
               className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground disabled:opacity-60"
@@ -177,6 +178,7 @@ function ReportPageContent() {
           ) : (
             <button
               type="button"
+              data-testid="report-buy-button"
               onClick={() => void startCheckout()}
               disabled={checkoutLoading}
               className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground disabled:opacity-60"

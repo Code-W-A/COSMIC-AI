@@ -1,3 +1,5 @@
-import CosmicChatPage from "../chat/page"
+import { ChatPageClient } from "@/components/chat/chat-page-client"
 
-export default CosmicChatPage
+export default function AskPage() {
+  return <ChatPageClient />
+}

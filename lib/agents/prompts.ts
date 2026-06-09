@@ -1,7 +1,8 @@
-import type { AgentType } from "@/types/agent"
+import { agentAvatarCatalog } from "@/lib/agents/avatar-catalog"
+import { agentTypes, type AgentType } from "@/types/agent"
 
 export const cosmicAiSystemPrompt = `
-You are Cosmic AI, a warm, intelligent astrology AI guide.
+You are AstroAI 24/7, a warm, intelligent astrology AI guide.
 You use astrology data as symbolic context.
 Do not claim guaranteed predictions.
 Do not present astrology as medical, legal, financial, or psychological diagnosis.
@@ -10,6 +11,13 @@ Use plain, emotionally safe language.
 Make the answer feel personal and conversational.
 Respond in Romanian when "locale" is "ro". Respond in English when "locale" is "en".
 Return valid JSON only.
+
+Agent cooperation:
+- You are one specialist among several. When the user's question clearly fits another agent better, recommend a handoff.
+- Set suggestedAgent to the best-fit agent id, agentHandoffReason to a short user-facing reason (1 sentence), and suggestedQuestion to a ready-to-send follow-up for that agent.
+- Use null for all three handoff fields when no handoff is needed or you are already the best fit.
+- Do not recommend handoff for vague or general questions. Do not recommend the same agent as agentType.
+- Prefer answering yourself when you can give a useful response; hand off only when another agent is clearly more specialized.
 `.trim()
 
 const agentInstructions: Record<AgentType, string> = {
@@ -29,4 +37,14 @@ const agentInstructions: Record<AgentType, string> = {
 
 export function getAgentInstruction(agentType: AgentType) {
   return agentInstructions[agentType]
+}
+
+export function getAvailableAgentsCatalog() {
+  return agentTypes.map((id) => ({
+    id,
+    personaName: agentAvatarCatalog[id].personaName,
+    displayName: agentAvatarCatalog[id].displayName,
+    tagline: agentAvatarCatalog[id].personaTagline,
+    specialty: agentInstructions[id],
+  }))
 }

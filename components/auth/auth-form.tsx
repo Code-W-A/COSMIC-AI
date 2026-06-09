@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { ArrowRight } from "lucide-react"
 
 import { AppLogo } from "@/components/branding/app-logo"
+import { CosmicAuthLoading } from "@/components/auth/cosmic-auth-loading"
 import { resolvePostAuthRoute } from "@/lib/auth/resolvePostAuthRoute"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { loginWithEmail, loginWithGoogle, registerOrLoginWithGoogle, registerWithEmail } from "@/lib/firebase/auth"
@@ -58,7 +59,6 @@ export function AuthForm({ mode }: AuthFormProps) {
             ? "Autentificarea a eșuat."
             : "Authentication failed."
       )
-    } finally {
       setSubmitting(false)
     }
   }
@@ -87,12 +87,16 @@ export function AuthForm({ mode }: AuthFormProps) {
             ? "Autentificarea a eșuat."
             : "Authentication failed."
       )
-    } finally {
       setGoogleSubmitting(false)
     }
   }
 
   const isRegister = mode === "register"
+  const isAuthPending = submitting || googleSubmitting
+
+  if (isAuthPending) {
+    return <CosmicAuthLoading />
+  }
 
   return (
     <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background px-4 py-12">
@@ -107,11 +111,12 @@ export function AuthForm({ mode }: AuthFormProps) {
         </div>
         <Link href={localizedPath("/")} className="mb-8 flex flex-col items-center">
           <AppLogo size={56} className="mb-4 ring-1 ring-white/20 shadow-[0_0_30px_rgba(109,75,255,0.25)]" />
-          <span className="text-2xl font-bold text-foreground">Cosmic AI</span>
+          <span className="text-2xl font-bold text-foreground">AstroAI 24/7</span>
         </Link>
 
         <form
           onSubmit={handleSubmit}
+          data-testid={`auth-form-${mode}`}
           className="rounded-3xl border border-border bg-[#0D0820]/70 px-6 py-8 shadow-xl shadow-[#6D4BFF]/10 backdrop-blur-xl sm:px-8"
         >
           <div className="mb-7">
@@ -132,6 +137,7 @@ export function AuthForm({ mode }: AuthFormProps) {
                   {t("auth.field.name")}
                 </span>
                 <input
+                  data-testid="auth-name-input"
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
                   className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
@@ -145,6 +151,7 @@ export function AuthForm({ mode }: AuthFormProps) {
                 {t("auth.field.email")}
               </span>
               <input
+                data-testid="auth-email-input"
                 required
                 type="email"
                 value={email}
@@ -159,6 +166,7 @@ export function AuthForm({ mode }: AuthFormProps) {
                 {t("auth.field.password")}
               </span>
               <input
+                data-testid="auth-password-input"
                 required
                 minLength={6}
                 type="password"
@@ -171,13 +179,14 @@ export function AuthForm({ mode }: AuthFormProps) {
           </div>
 
           {error && (
-            <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+            <p data-testid="auth-error-message" className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
               {error}
             </p>
           )}
 
           <button
             type="submit"
+            data-testid={`auth-submit-${mode}`}
             disabled={submitting}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -199,6 +208,7 @@ export function AuthForm({ mode }: AuthFormProps) {
 
           <button
             type="button"
+            data-testid="auth-google-button"
             onClick={handleGoogleAuth}
             disabled={googleSubmitting}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-[rgba(255,255,255,0.08)] disabled:cursor-not-allowed disabled:opacity-50"

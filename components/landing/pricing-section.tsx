@@ -270,6 +270,7 @@ export function PricingSection() {
 
                 <button
                   type="button"
+                  data-testid={`pricing-cta-${plan.plan}`}
                   onClick={() => handlePlanClick(plan.plan)}
                   disabled={loadingPlan === plan.plan}
                   className={`mt-8 block w-full rounded-full py-3 text-center text-sm font-semibold transition-all ${

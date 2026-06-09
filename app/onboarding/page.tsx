@@ -303,6 +303,7 @@ function FormField({
   value,
   onChange,
   delay = 0,
+  testId,
 }: {
   label: string
   icon: React.ElementType
@@ -311,6 +312,7 @@ function FormField({
   value: string
   onChange: (v: string) => void
   delay?: number
+  testId?: string
 }) {
   const isPickerInput = type === "date" || type === "time"
 
@@ -337,6 +339,7 @@ function FormField({
         {label}
       </label>
       <input
+        data-testid={testId}
         type={type}
         placeholder={placeholder}
         value={value}
@@ -567,7 +570,7 @@ export default function OnboardingPage() {
                 fontFamily: "var(--font-space-grotesk, var(--font-sans))",
               }}
             >
-              Cosmic AI
+              AstroAI 24/7
             </h1>
           </Link>
         </motion.div>
@@ -603,7 +606,11 @@ export default function OnboardingPage() {
           />
 
           {/* Card inner */}
-          <div className="rounded-3xl bg-[#0D0820]/70 px-6 py-8 backdrop-blur-xl sm:px-8 sm:py-10">
+          <div
+            data-testid="onboarding-card"
+            data-step={step}
+            className="rounded-3xl bg-[#0D0820]/70 px-6 py-8 backdrop-blur-xl sm:px-8 sm:py-10"
+          >
             <AnimatePresence mode="wait">
               {/* ── Step 1: Personal ── */}
               {step === 1 && (
@@ -633,6 +640,7 @@ export default function OnboardingPage() {
                       value={name}
                       onChange={setName}
                       delay={0.05}
+                      testId="onboarding-name-input"
                     />
                   </div>
                 </motion.div>
@@ -667,6 +675,7 @@ export default function OnboardingPage() {
                       value={birthDate}
                       onChange={setBirthDate}
                       delay={0.05}
+                      testId="onboarding-birthdate-input"
                     />
                     <FormField
                       label={isRo ? "Ora nașterii" : "Birth Time"}
@@ -676,6 +685,7 @@ export default function OnboardingPage() {
                       value={birthTime}
                       onChange={setBirthTime}
                       delay={0.1}
+                      testId="onboarding-birthtime-input"
                     />
                     <motion.div
                       initial={{ opacity: 0, y: 12 }}
@@ -713,6 +723,7 @@ export default function OnboardingPage() {
                         {isRo ? "Sex biologic" : "Sex at birth"}
                       </label>
                       <select
+                        data-testid="onboarding-sex-select"
                         value={sexAtBirth}
                         onChange={(event) => {
                           const value = event.target.value
@@ -782,6 +793,7 @@ export default function OnboardingPage() {
                           <button
                             key={option.value}
                             type="button"
+                            data-testid={`onboarding-focus-${option.value}`}
                             onClick={() => setFocus(option.value)}
                             className={`group flex flex-col items-center gap-2 rounded-xl px-3 py-4 text-center transition-all ${
                               isSelected
@@ -837,6 +849,7 @@ export default function OnboardingPage() {
               {step > 1 && (
                 <button
                   type="button"
+                  data-testid="onboarding-back"
                   onClick={handleBack}
                   className="rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-5 py-3 text-sm font-medium text-muted-foreground transition-all hover:border-[#6D4BFF]/30 hover:bg-[rgba(255,255,255,0.06)] hover:text-foreground"
                 >
@@ -845,6 +858,7 @@ export default function OnboardingPage() {
               )}
               <button
                 type="button"
+                data-testid="onboarding-continue"
                 onClick={handleNext}
                 disabled={!canProceed() || isSubmitting}
                 className="group relative flex flex-1 items-center justify-center gap-2.5 overflow-hidden rounded-xl py-3.5 text-sm font-semibold text-foreground transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-40"
@@ -882,7 +896,10 @@ export default function OnboardingPage() {
             </div>
 
             {error && (
-              <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
+              <p
+                data-testid="onboarding-error"
+                className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100"
+              >
                 {error}
               </p>
             )}

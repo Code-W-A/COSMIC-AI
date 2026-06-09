@@ -2,12 +2,15 @@ import { Timestamp } from "firebase-admin/firestore"
 
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
+import type { DailyHoroscopeData } from "@/lib/divineapi/types"
+import { getLocalizedDailyHoroscope } from "@/lib/divineapi/localization"
 import {
   getCompatibilityReadingsCollection,
   getCosmicProfile,
   getDailyGuidanceCollection,
   getPartnerRef,
 } from "@/lib/firebase/firestore"
+import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
@@ -26,7 +29,30 @@ function toRecord(value: unknown) {
     : null
 }
 
+function toDailyHoroscopeData(
+  latestDaily: Record<string, unknown> | null,
+  dateFallback: string | null
+): DailyHoroscopeData | null {
+  if (!latestDaily) return null
+
+  const horoscopeData =
+    typeof latestDaily.horoscopeData === "string" ? latestDaily.horoscopeData : undefined
+  if (!horoscopeData) return null
+
+  return {
+    raw: latestDaily.divineHoroscopeRaw ?? null,
+    date:
+      typeof latestDaily.date === "string"
+        ? latestDaily.date
+        : dateFallback ?? undefined,
+    sign: typeof latestDaily.sign === "string" ? latestDaily.sign : undefined,
+    horoscopeData,
+    categories: (toRecord(latestDaily.categories) ?? undefined) as DailyHoroscopeData["categories"],
+  }
+}
+
 export async function GET(request: Request) {
+  const locale = getRequestLocale(request)
   const user = await requireUser(request)
   if (isAuthResponse(user)) return user
 
@@ -51,6 +77,12 @@ export async function GET(request: Request) {
       .limit(1)
       .get()
     const latestDaily = latestDailySnapshot.docs[0]?.data() ?? null
+    const dailyDate =
+      latestDaily && typeof latestDaily.date === "string" ? latestDaily.date : null
+    const dailySource = toDailyHoroscopeData(latestDaily, dailyDate)
+    const localizedDaily = dailySource
+      ? await getLocalizedDailyHoroscope(user.uid, dailySource, locale)
+      : null
 
     const latestCompatibilitySnapshot = await getCompatibilityReadingsCollection(user.uid)
       .orderBy("createdAt", "desc")
@@ -86,13 +118,10 @@ export async function GET(request: Request) {
       daily: {
         generated: Boolean(latestDaily),
         generatedAt: latestDaily ? toDateIso(latestDaily.updatedAt) : null,
-        date: latestDaily && typeof latestDaily.date === "string" ? latestDaily.date : null,
-        sign: latestDaily && typeof latestDaily.sign === "string" ? latestDaily.sign : null,
-        horoscopeData:
-          latestDaily && typeof latestDaily.horoscopeData === "string"
-            ? latestDaily.horoscopeData
-            : null,
-        categories: latestDaily ? toRecord(latestDaily.categories) : null,
+        date: localizedDaily?.date ?? dailyDate,
+        sign: localizedDaily?.sign ?? (latestDaily && typeof latestDaily.sign === "string" ? latestDaily.sign : null),
+        horoscopeData: localizedDaily?.horoscopeData ?? null,
+        categories: localizedDaily?.categories ? toRecord(localizedDaily.categories) : null,
         raw: INCLUDE_RAW_DIVINE && latestDaily ? toRecord(latestDaily.divineHoroscopeRaw) : null,
       },
       synastry: {
