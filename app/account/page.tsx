@@ -17,6 +17,7 @@ import {
 } from "@/components/account/account-skeletons"
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { BirthPlaceAutocomplete } from "@/components/location/birth-place-autocomplete"
+import { BirthDateFields, BirthTimeFields } from "@/components/profile/birth-datetime-fields"
 import { apiFetch } from "@/lib/api/client"
 import { logout } from "@/lib/firebase/auth"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
@@ -1067,26 +1068,20 @@ function AccountPageContent() {
                     className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
                   />
                 </label>
-                <label className="text-sm text-muted-foreground">
-                  {t("account.field.birthDate")}
-                  <input
-                    required
-                    type="date"
-                    value={form.birthDate}
-                    onChange={(event) => setForm((prev) => ({ ...prev, birthDate: event.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
-                  />
-                </label>
-                <label className="text-sm text-muted-foreground">
-                  {t("account.field.birthTime")}
-                  <input
-                    required
-                    type="time"
-                    value={form.birthTime}
-                    onChange={(event) => setForm((prev) => ({ ...prev, birthTime: event.target.value }))}
-                    className="mt-1 w-full rounded-lg border border-border bg-[rgba(255,255,255,0.04)] px-3 py-2 text-foreground"
-                  />
-                </label>
+                <BirthDateFields
+                  label={t("account.field.birthDate")}
+                  value={form.birthDate}
+                  onChange={(birthDate) => setForm((prev) => ({ ...prev, birthDate }))}
+                  testIdPrefix="account-profile-"
+                  wrapperTestId="account-profile-birthdate"
+                />
+                <BirthTimeFields
+                  label={t("account.field.birthTime")}
+                  value={form.birthTime}
+                  onChange={(birthTime) => setForm((prev) => ({ ...prev, birthTime }))}
+                  testIdPrefix="account-profile-"
+                  wrapperTestId="account-profile-birthtime"
+                />
                 <BirthPlaceAutocomplete
                   label={t("account.field.birthPlace")}
                   placeholder={isRo ? "Oraș, județ sau țară" : "City, State or Country"}

@@ -17,6 +17,18 @@ test.describe("Autentificare", () => {
     await expect(page).toHaveURL(/\/en\/login/)
   })
 
+  test("AUTH-04 forgot password trimite link de resetare", async ({ page, localized }) => {
+    await page.goto(localized("/login"))
+    await page.getByTestId("auth-forgot-password-link").click()
+    await expect(page).toHaveURL(/\/en\/forgot-password/)
+
+    await page.getByTestId("forgot-password-email-input").fill(E2E_USERS.existing.email)
+    await page.getByTestId("forgot-password-submit").click()
+
+    await expect(page.getByTestId("forgot-password-success")).toBeVisible()
+    await expect(page).toHaveURL(/\/en\/forgot-password/)
+  })
+
   test("AUTH-01 register cont nou -> redirect onboarding", async ({ page, localized }) => {
     const uniqueEmail = `new.${Date.now()}@astroai.local`
 
@@ -24,6 +36,7 @@ test.describe("Autentificare", () => {
     await page.getByTestId("auth-name-input").fill("New E2E User")
     await page.getByTestId("auth-email-input").fill(uniqueEmail)
     await page.getByTestId("auth-password-input").fill("AstroE2E!234")
+    await page.getByTestId("auth-confirm-password-input").fill("AstroE2E!234")
     await page.getByTestId("auth-submit-register").click()
 
     await expect(page).toHaveURL(/\/en\/onboarding/)

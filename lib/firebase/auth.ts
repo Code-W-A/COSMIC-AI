@@ -6,6 +6,7 @@ import {
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
   linkWithCredential,
+  sendPasswordResetEmail,
   signInWithPopup,
   signInWithEmailAndPassword,
   signOut,
@@ -13,6 +14,13 @@ import {
 } from "firebase/auth"
 
 import { getFirebaseAuth } from "@/lib/firebase/client"
+import type { Locale } from "@/lib/i18n/locale"
+
+function createAuthCodeError(code: string): Error & { code: string } {
+  const error = new Error(code) as Error & { code: string }
+  error.code = code
+  return error
+}
 
 async function createBackendUserDocument() {
   const auth = getFirebaseAuth()
@@ -72,33 +80,27 @@ export async function loginWithGoogle(emailHint?: string, passwordForLinking?: s
     await createBackendUserDocument()
     return credential.user
   } catch (error) {
-    const authError = error as { code?: string; customData?: { email?: string } }
+    const caughtError = error as { code?: string; customData?: { email?: string } }
 
-    if (authError?.code !== "auth/account-exists-with-different-credential") {
+    if (caughtError?.code !== "auth/account-exists-with-different-credential") {
       throw error
     }
 
     const pendingCredential = GoogleAuthProvider.credentialFromError(error as FirebaseError)
-    const pendingEmail = authError.customData?.email ?? emailHint
+    const pendingEmail = caughtError.customData?.email ?? emailHint
 
     if (!pendingCredential || !pendingEmail) {
-      throw new Error(
-        "This email is linked to another sign-in method. Sign in with that method first, then retry Google."
-      )
+      throw createAuthCodeError("auth/google-account-exists")
     }
 
     const providers = await fetchSignInMethodsForEmail(auth, pendingEmail)
 
     if (!providers.includes("password")) {
-      throw new Error(
-        "This email is linked to another sign-in method. Sign in with that provider first, then retry Google."
-      )
+      throw createAuthCodeError("auth/google-other-provider")
     }
 
     if (!passwordForLinking) {
-      throw new Error(
-        "This email already has a password account. Sign in with password once, then click Continue with Google again."
-      )
+      throw createAuthCodeError("auth/google-password-required")
     }
 
     const emailCredential = await signInWithEmailAndPassword(auth, pendingEmail, passwordForLinking)
@@ -114,4 +116,15 @@ export async function registerOrLoginWithGoogle(emailHint?: string, passwordForL
 
 export async function logout() {
   await signOut(getFirebaseAuth())
+}
+
+export async function sendPasswordReset(email: string, locale: Locale) {
+  const auth = getFirebaseAuth()
+  auth.languageCode = locale
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+
+  await sendPasswordResetEmail(auth, email.trim(), {
+    url: `${origin}/${locale}/login`,
+    handleCodeInApp: false,
+  })
 }

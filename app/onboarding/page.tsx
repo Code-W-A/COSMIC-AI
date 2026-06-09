@@ -23,6 +23,7 @@ import {
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppLogo } from "@/components/branding/app-logo"
 import { BirthPlaceAutocomplete } from "@/components/location/birth-place-autocomplete"
+import { BirthDateFields, BirthTimeFields } from "@/components/profile/birth-datetime-fields"
 import { apiFetch } from "@/lib/api/client"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 import type { ResolvedBirthLocation } from "@/lib/location/types"
@@ -667,26 +668,32 @@ export default function OnboardingPage() {
                   </div>
 
                   <div className="space-y-5">
-                    <FormField
-                      label={isRo ? "Data nașterii" : "Birth Date"}
-                      icon={Calendar}
-                      type="date"
-                      placeholder={isRo ? "Selectează data nașterii" : "Select your birth date"}
-                      value={birthDate}
-                      onChange={setBirthDate}
-                      delay={0.05}
-                      testId="onboarding-birthdate-input"
-                    />
-                    <FormField
-                      label={isRo ? "Ora nașterii" : "Birth Time"}
-                      icon={Clock}
-                      type="time"
-                      placeholder={isRo ? "Introdu ora nașterii" : "Enter your birth time"}
-                      value={birthTime}
-                      onChange={setBirthTime}
-                      delay={0.1}
-                      testId="onboarding-birthtime-input"
-                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.05 }}
+                    >
+                      <BirthDateFields
+                        label={isRo ? "Data nașterii" : "Birth Date"}
+                        icon={Calendar}
+                        value={birthDate}
+                        onChange={setBirthDate}
+                        wrapperTestId="onboarding-birthdate-input"
+                      />
+                    </motion.div>
+                    <motion.div
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.1 }}
+                    >
+                      <BirthTimeFields
+                        label={isRo ? "Ora nașterii" : "Birth Time"}
+                        icon={Clock}
+                        value={birthTime}
+                        onChange={setBirthTime}
+                        wrapperTestId="onboarding-birthtime-input"
+                      />
+                    </motion.div>
                     <motion.div
                       initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}

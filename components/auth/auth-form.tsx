@@ -7,9 +7,11 @@ import { ArrowRight } from "lucide-react"
 
 import { AppLogo } from "@/components/branding/app-logo"
 import { CosmicAuthLoading } from "@/components/auth/cosmic-auth-loading"
+import { PasswordInput } from "@/components/auth/password-input"
 import { resolvePostAuthRoute } from "@/lib/auth/resolvePostAuthRoute"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { loginWithEmail, loginWithGoogle, registerOrLoginWithGoogle, registerWithEmail } from "@/lib/firebase/auth"
+import { localizeFirebaseAuthError } from "@/lib/i18n/firebase-auth-errors"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 
 interface AuthFormProps {
@@ -20,11 +22,11 @@ export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter()
   const localizedPath = useLocalizedPath()
   const { t, locale } = useTranslations()
-  const isRo = locale === "ro"
   const [explicitNextPath, setExplicitNextPath] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
@@ -41,6 +43,11 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === "register") {
+        if (password !== confirmPassword) {
+          setError(t("auth.error.passwordMismatch"))
+          setSubmitting(false)
+          return
+        }
         await registerWithEmail(email, password, displayName)
       } else {
         await loginWithEmail(email, password)
@@ -52,13 +59,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       })
       router.push(nextPath)
     } catch (authError) {
-      setError(
-        authError instanceof Error
-          ? authError.message
-          : isRo
-            ? "Autentificarea a eșuat."
-            : "Authentication failed."
-      )
+      setError(localizeFirebaseAuthError(authError, locale))
       setSubmitting(false)
     }
   }
@@ -80,13 +81,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       })
       router.push(nextPath)
     } catch (authError) {
-      setError(
-        authError instanceof Error
-          ? authError.message
-          : isRo
-            ? "Autentificarea a eșuat."
-            : "Authentication failed."
-      )
+      setError(localizeFirebaseAuthError(authError, locale))
       setGoogleSubmitting(false)
     }
   }
@@ -161,21 +156,44 @@ export function AuthForm({ mode }: AuthFormProps) {
               />
             </label>
 
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-foreground">
-                {t("auth.field.password")}
-              </span>
-              <input
-                data-testid="auth-password-input"
+            <PasswordInput
+              label={t("auth.field.password")}
+              value={password}
+              onChange={setPassword}
+              placeholder={t("auth.placeholder.password")}
+              testId="auth-password-input"
+              showLabel={t("auth.password.show")}
+              hideLabel={t("auth.password.hide")}
+              required
+              minLength={6}
+              autoComplete={isRegister ? "new-password" : "current-password"}
+            />
+
+            {!isRegister && (
+              <div className="flex justify-end">
+                <Link
+                  href={localizedPath("/forgot-password")}
+                  data-testid="auth-forgot-password-link"
+                  className="text-sm font-medium text-cosmic-lavender hover:text-foreground"
+                >
+                  {t("auth.forgotPassword")}
+                </Link>
+              </div>
+            )}
+
+            {isRegister && (
+              <PasswordInput
+                label={t("auth.field.confirmPassword")}
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                placeholder={t("auth.placeholder.confirmPassword")}
+                testId="auth-confirm-password-input"
+                showLabel={t("auth.password.show")}
+                hideLabel={t("auth.password.hide")}
                 required
                 minLength={6}
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-foreground outline-none transition focus:border-[#6D4BFF]/60"
-                placeholder={t("auth.placeholder.password")}
               />
-            </label>
+            )}
           </div>
 
           {error && (
@@ -201,7 +219,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           <div className="my-4 flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
             <span className="text-xs uppercase tracking-wide text-muted-foreground">
-              {isRo ? "sau" : "or"}
+              {t("auth.or")}
             </span>
             <div className="h-px flex-1 bg-border" />
           </div>

@@ -54,8 +54,11 @@ test.describe("Onboarding", () => {
 
     // Pas 2: detalii nastere + locatie rezolvata din sugestii
     await expect(page.getByTestId("onboarding-card")).toHaveAttribute("data-step", "2")
-    await page.getByTestId("onboarding-birthdate-input").fill("1994-06-14")
-    await page.getByTestId("onboarding-birthtime-input").fill("08:45")
+    await page.getByTestId("birth-date-year").selectOption("1994")
+    await page.getByTestId("birth-date-month").selectOption("6")
+    await page.getByTestId("birth-date-day").selectOption("14")
+    await page.getByTestId("birth-time-hour").selectOption("8")
+    await page.getByTestId("birth-time-minute").selectOption("45")
     await page.getByTestId("location-autocomplete-input").fill("Bucha")
     await page.getByTestId("location-autocomplete-suggestion").first().click()
     await page.getByTestId("onboarding-sex-select").selectOption("female")

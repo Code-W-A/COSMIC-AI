@@ -6,6 +6,10 @@ import { getCosmicProfile, getCosmicProfileRef, getUserRef } from "@/lib/firebas
 import { logError, logInfo } from "@/lib/logging/logger"
 import { getResolvedBirthLocationFromSource } from "@/lib/location/profile-location"
 import { isAstrologyProfileComplete } from "@/lib/profile/input-policy"
+import {
+  isValidBirthDateString,
+  isValidBirthTimeString,
+} from "@/lib/profile/birth-datetime"
 import { isMainFocus, isSexAtBirth } from "@/types/user"
 
 export const runtime = "nodejs"
@@ -51,6 +55,10 @@ function validateProfileBody(body: Record<string, unknown>) {
     !isSexAtBirth(sexAtBirth) ||
     !isMainFocus(mainFocus)
   ) {
+    return null
+  }
+
+  if (!isValidBirthDateString(birthDate) || !isValidBirthTimeString(birthTime)) {
     return null
   }
 
@@ -115,7 +123,7 @@ export async function POST(request: Request) {
   if (!profile) {
     return errorResponse(
       "invalid_profile",
-      "Name, birth date, birth time, birth place, sex at birth, and a valid main focus are required.",
+      "Name, birth date (YYYY-MM-DD), birth time (HH:MM), birth place, sex at birth, and a valid main focus are required.",
       400
     )
   }
