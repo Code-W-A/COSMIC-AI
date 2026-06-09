@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { LogOut, Sparkles } from "lucide-react"
@@ -186,6 +186,24 @@ type SubscriptionStatusPayload = {
 const IS_DEV = process.env.NODE_ENV !== "production"
 
 export default function AccountPage() {
+  return (
+    <Suspense fallback={<AccountPageFallback />}>
+      <AccountPageContent />
+    </Suspense>
+  )
+}
+
+function AccountPageFallback() {
+  return (
+    <AuthGuard>
+      <div className="min-h-dvh bg-background px-4 py-10 sm:px-6">
+        <AccountHeroNameSkeleton />
+      </div>
+    </AuthGuard>
+  )
+}
+
+function AccountPageContent() {
   const localizedPath = useLocalizedPath()
   const router = useRouter()
   const searchParams = useSearchParams()
