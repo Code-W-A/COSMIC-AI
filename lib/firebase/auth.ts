@@ -3,9 +3,12 @@
 import type { FirebaseError } from "firebase/app"
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
   linkWithCredential,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   sendPasswordResetEmail,
   signInWithPopup,
   signInWithEmailAndPassword,
@@ -13,7 +16,9 @@ import {
   updateProfile,
 } from "firebase/auth"
 
+import { apiFetch } from "@/lib/api/client"
 import { getFirebaseAuth } from "@/lib/firebase/client"
+import { logClientEvent } from "@/lib/logging/client-log"
 import type { Locale } from "@/lib/i18n/locale"
 
 function createAuthCodeError(code: string): Error & { code: string } {
@@ -116,6 +121,53 @@ export async function registerOrLoginWithGoogle(emailHint?: string, passwordForL
 
 export async function logout() {
   await signOut(getFirebaseAuth())
+}
+
+function userHasPasswordProvider() {
+  const user = getFirebaseAuth().currentUser
+  return user?.providerData.some((provider) => provider.providerId === "password") ?? false
+}
+
+export async function deleteAccount(options?: { password?: string }) {
+  const auth = getFirebaseAuth()
+  const user = auth.currentUser
+  const email = user?.email?.trim().toLowerCase()
+
+  if (!user || !email) {
+    throw createAuthCodeError("auth/delete-account-not-signed-in")
+  }
+
+  if (userHasPasswordProvider()) {
+    if (!options?.password?.trim()) {
+      throw createAuthCodeError("auth/delete-account-password-required")
+    }
+
+    await reauthenticateWithCredential(
+      user,
+      EmailAuthProvider.credential(email, options.password)
+    )
+  } else {
+    const provider = new GoogleAuthProvider()
+    provider.setCustomParameters({ prompt: "login" })
+    await reauthenticateWithPopup(user, provider)
+  }
+
+  logClientEvent("account", "account.delete_client_started", {
+    uid: user.uid,
+    email,
+    providers: user.providerData.map((provider) => provider.providerId),
+  })
+
+  await apiFetch("/api/user/account", {
+    method: "DELETE",
+  })
+
+  logClientEvent("account", "account.delete_client_completed", {
+    uid: user.uid,
+    email,
+  })
+
+  await signOut(auth)
 }
 
 export async function sendPasswordReset(email: string, locale: Locale) {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { apiFetch } from "@/lib/api/client"
 import type { LocationAutocompleteSuggestion, ResolvedBirthLocation } from "@/lib/location/types"
@@ -59,6 +59,18 @@ export function BirthPlaceAutocomplete({
   const rootRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<number | null>(null)
   const requestIdRef = useRef(0)
+  const skipValueMismatchClearRef = useRef(false)
+  const lastResolvedKeyRef = useRef<string | null>(
+    initialResolvedLocation
+      ? `${initialResolvedLocation.placeId}|${birthDate}|${birthTime}`
+      : null
+  )
+  const resolveInFlightKeyRef = useRef<string | null>(null)
+  const previousBirthDateTimeRef = useRef({ birthDate, birthTime })
+
+  function buildResolveKey(placeId: string) {
+    return `${placeId}|${birthDate}|${birthTime}`
+  }
 
   useEffect(() => {
     if (!initialResolvedLocation) return
@@ -84,11 +96,18 @@ export function BirthPlaceAutocomplete({
   }, [])
 
   useEffect(() => {
-    if (selection && value.trim() !== selection.description.trim()) {
-      setSelection(null)
-      setResolveError("")
-      onResolvedChange(null)
+    if (skipValueMismatchClearRef.current) {
+      skipValueMismatchClearRef.current = false
+      return
     }
+
+    if (!selection) return
+    if (value.trim() === selection.description.trim()) return
+
+    setSelection(null)
+    setResolveError("")
+    lastResolvedKeyRef.current = null
+    onResolvedChange(null)
   }, [onResolvedChange, selection, value])
 
   useEffect(() => {
@@ -100,6 +119,13 @@ export function BirthPlaceAutocomplete({
     if (!query || query.length < 2) {
       setSuggestions([])
       setLoadingSuggestions(false)
+      return
+    }
+
+    if (selection && query === selection.description.trim()) {
+      setSuggestions([])
+      setLoadingSuggestions(false)
+      setOpen(false)
       return
     }
 
@@ -132,71 +158,106 @@ export function BirthPlaceAutocomplete({
         window.clearTimeout(debounceRef.current)
       }
     }
-  }, [value])
+  }, [selection, value])
 
-  async function runResolve(nextSelection: { placeId: string; description: string }) {
-    if (!hasBirthDateTime) {
-      setResolveError(messages.missingBirthDateTime)
-      onResolvedChange(null)
-      return
-    }
+  const runResolve = useCallback(
+    async (nextSelection: { placeId: string; description: string }) => {
+      if (!hasBirthDateTime) {
+        setResolveError(messages.missingBirthDateTime)
+        onResolvedChange(null)
+        return
+      }
 
-    setResolving(true)
-    setResolveError("")
-    try {
-      const payload = await apiFetch<{ success: true } & LocationResolvePayload>(
-        "/api/location/resolve",
-        {
-          method: "POST",
-          body: {
-            placeId: nextSelection.placeId,
-            birthDate,
-            birthTime,
-          },
+      const resolveKey = buildResolveKey(nextSelection.placeId)
+      if (
+        lastResolvedKeyRef.current === resolveKey ||
+        resolveInFlightKeyRef.current === resolveKey
+      ) {
+        return
+      }
+
+      resolveInFlightKeyRef.current = resolveKey
+      setResolving(true)
+      setResolveError("")
+      try {
+        const payload = await apiFetch<{ success: true } & LocationResolvePayload>(
+          "/api/location/resolve",
+          {
+            method: "POST",
+            body: {
+              placeId: nextSelection.placeId,
+              birthDate,
+              birthTime,
+            },
+          }
+        )
+
+        skipValueMismatchClearRef.current = true
+        onValueChange(payload.location.birthPlace)
+        onResolvedChange(payload.location)
+        setSelection({
+          placeId: payload.location.placeId,
+          description: payload.location.birthPlace,
+        })
+        lastResolvedKeyRef.current = buildResolveKey(payload.location.placeId)
+        setSuggestions([])
+        setOpen(false)
+      } catch (error) {
+        onResolvedChange(null)
+        setResolveError(error instanceof Error ? error.message : "")
+      } finally {
+        if (resolveInFlightKeyRef.current === resolveKey) {
+          resolveInFlightKeyRef.current = null
         }
-      )
+        setResolving(false)
+      }
+    },
+    [birthDate, birthTime, hasBirthDateTime, messages.missingBirthDateTime, onResolvedChange, onValueChange]
+  )
 
-      onValueChange(payload.location.birthPlace)
-      onResolvedChange(payload.location)
-      setSelection({
-        placeId: payload.location.placeId,
-        description: payload.location.birthPlace,
-      })
+  const selectSuggestion = useCallback(
+    (suggestion: LocationAutocompleteSuggestion) => {
+      const nextSelection = {
+        placeId: suggestion.placeId,
+        description: suggestion.description,
+      }
+
+      skipValueMismatchClearRef.current = true
       setOpen(false)
-    } catch (error) {
-      onResolvedChange(null)
-      setResolveError(error instanceof Error ? error.message : "")
-    } finally {
-      setResolving(false)
-    }
-  }
+      setSuggestions([])
+      onValueChange(suggestion.description)
+      setSelection(nextSelection)
+      setResolveError("")
+      void runResolve(nextSelection)
+    },
+    [onValueChange, runResolve]
+  )
 
   useEffect(() => {
-    if (!selection || !hasBirthDateTime) return
-    if (resolving) return
-    if (resolveError && resolveError !== messages.missingBirthDateTime) return
+    const previous = previousBirthDateTimeRef.current
+    const birthDateTimeChanged =
+      previous.birthDate !== birthDate || previous.birthTime !== birthTime
+    previousBirthDateTimeRef.current = { birthDate, birthTime }
 
-    if (selection.description.trim() === value.trim()) {
-      void runResolve(selection)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [birthDate, birthTime])
+    if (!birthDateTimeChanged || !selection || !hasBirthDateTime || resolving) return
+
+    void runResolve(selection)
+  }, [birthDate, birthTime, hasBirthDateTime, resolving, runResolve, selection])
 
   const showDropdown = useMemo(
     () =>
       open &&
       !disabled &&
+      !resolving &&
       (loadingSuggestions ||
         suggestions.length > 0 ||
         (value.trim().length >= 2 && suggestions.length === 0)),
-    [disabled, loadingSuggestions, open, suggestions.length, value]
+    [disabled, loadingSuggestions, open, resolving, suggestions.length, value]
   )
 
   return (
     <div className="space-y-2" ref={rootRef}>
-      <label className="text-sm font-medium text-foreground">
-        {label}
-      </label>
+      <label className="text-sm font-medium text-foreground">{label}</label>
       <div className="relative">
         <input
           data-testid="location-autocomplete-input"
@@ -218,7 +279,10 @@ export function BirthPlaceAutocomplete({
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-70"
         />
         {showDropdown && (
-          <div className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-popover p-1 shadow-lg">
+          <div
+            data-testid="location-autocomplete-dropdown"
+            className="absolute z-30 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-popover p-1 shadow-lg"
+          >
             {loadingSuggestions && (
               <div className="px-3 py-2 text-xs text-muted-foreground">
                 {messages.loadingSuggestions}
@@ -233,15 +297,11 @@ export function BirthPlaceAutocomplete({
                   key={suggestion.placeId}
                   type="button"
                   data-testid="location-autocomplete-suggestion"
-                  className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-                  onClick={() => {
-                    onValueChange(suggestion.description)
-                    const nextSelection = {
-                      placeId: suggestion.placeId,
-                      description: suggestion.description,
-                    }
-                    setSelection(nextSelection)
-                    void runResolve(nextSelection)
+                  className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    selectSuggestion(suggestion)
                   }}
                 >
                   <div className="font-medium text-foreground">{suggestion.mainText}</div>

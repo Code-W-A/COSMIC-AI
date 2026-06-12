@@ -179,7 +179,7 @@ export async function ensureNatalChart(
   }
 
   await logInfo("divineapi.natal", "natal_generation_started", { uid })
-  const natal = await getNatalChartFromDivineApi(profileToBirthDetails(profile), locale)
+  const natal = await getNatalChartFromDivineApi(profileToBirthDetails(profile), locale, { uid })
   await saveNatalToProfile(uid, natal)
   await logInfo("divineapi.natal", "natal_generation_success", { uid })
 

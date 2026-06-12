@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
+import { getAccountDataSnapshot } from "@/lib/firebase/account-snapshot"
 import { createUserDocumentIfMissing } from "@/lib/firebase/firestore"
 import { logError, logInfo } from "@/lib/logging/logger"
 
@@ -14,11 +15,17 @@ export async function POST(request: Request) {
   if (isAuthResponse(user)) return user
 
   try {
+    const beforeBootstrap = await getAccountDataSnapshot(user.uid)
     const userCreated = await createUserDocumentIfMissing(user)
+    const afterBootstrap = await getAccountDataSnapshot(user.uid)
 
     await logInfo("auth", userCreated ? "user_created" : "user_already_exists", {
       uid: user.uid,
-      email: user.email,
+      email: user.email ?? null,
+      authProvider: user.firebase?.sign_in_provider ?? null,
+      userCreated,
+      beforeBootstrap,
+      afterBootstrap,
     })
 
     return successResponse({ userCreated }, userCreated ? 201 : 200)

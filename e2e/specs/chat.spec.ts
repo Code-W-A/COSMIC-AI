@@ -44,6 +44,23 @@ test.describe("Chat", () => {
     await expect(page.getByTestId("chat-message-assistant").last()).toContainText("career_purpose")
   })
 
+  test("CHAT-04 copiere mesaj assistant + toast", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"])
+
+    await page.getByTestId("chat-input").fill("Copy this cosmic reply please.")
+    await page.getByTestId("chat-send-button").click()
+
+    const assistantMessage = page.getByTestId("chat-message-assistant").last()
+    await expect(assistantMessage).toContainText("Mocked")
+
+    await assistantMessage.getByTestId("chat-message-copy").click()
+
+    await expect(page.locator("[data-sonner-toast]")).toContainText("Message copied")
+
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText())
+    expect(clipboardText).toContain("Mocked")
+  })
+
   test("HANDOFF-01 agentul recomanda comutare + prefill input", async ({ page }) => {
     await page.getByTestId("chat-input").fill("What career path fits my chart at work?")
     await page.getByTestId("chat-send-button").click()

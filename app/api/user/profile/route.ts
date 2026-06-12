@@ -5,6 +5,7 @@ import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { getCosmicProfile, getCosmicProfileRef, getUserRef } from "@/lib/firebase/firestore"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { getResolvedBirthLocationFromSource } from "@/lib/location/profile-location"
+import { isNatalReady } from "@/lib/divineapi/natal-overview"
 import { isAstrologyProfileComplete } from "@/lib/profile/input-policy"
 import {
   isValidBirthDateString,
@@ -88,9 +89,38 @@ export async function GET(request: Request) {
 
   try {
     const profile = await getCosmicProfile(user.uid)
+    const profileComplete = isAstrologyProfileComplete(profile)
+    const natalReady = isNatalReady(profile)
+
+    await logInfo("profile", "profile_route_state", {
+      uid: user.uid,
+      email: user.email ?? null,
+      authProvider: user.firebase?.sign_in_provider ?? null,
+      hasProfile: Boolean(profile),
+      profileComplete,
+      natalReady,
+      profileFields: profile
+        ? {
+            hasName: Boolean(profile.name?.trim()),
+            hasBirthDate: Boolean(profile.birthDate?.trim()),
+            hasBirthTime: Boolean(profile.birthTime?.trim()),
+            hasBirthPlace: Boolean(profile.birthPlace?.trim()),
+            hasSexAtBirth: Boolean(profile.sexAtBirth),
+            hasMainFocus: Boolean(profile.mainFocus),
+          }
+        : null,
+      hasNatalSummary: Boolean(
+        profile &&
+          typeof profile === "object" &&
+          "natalSummary" in profile &&
+          (profile as { natalSummary?: unknown }).natalSummary
+      ),
+    })
+
     return successResponse({
       profile,
-      profileComplete: isAstrologyProfileComplete(profile),
+      profileComplete,
+      natalReady,
     })
   } catch (error) {
     await logError("profile", "profile_fetch_failed", { uid: user.uid, error })

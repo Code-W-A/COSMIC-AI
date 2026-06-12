@@ -1,7 +1,7 @@
 "use client"
 
-import { useRef, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRef, useEffect, useState, useCallback } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import {
@@ -22,6 +22,11 @@ import {
 
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppLogo } from "@/components/branding/app-logo"
+import { CosmicGenerationLoading } from "@/components/onboarding/cosmic-generation-loading"
+import { NatalChartReveal } from "@/components/onboarding/natal-chart-reveal"
+import { StellarGuidesIntro } from "@/components/onboarding/stellar-guides-intro"
+import type { NatalRevealPayload } from "@/lib/divineapi/natal-overview"
+import { getRecommendedAgentForMainFocus } from "@/lib/onboarding/main-focus-agent"
 import { BirthPlaceAutocomplete } from "@/components/location/birth-place-autocomplete"
 import { BirthDateFields, BirthTimeFields } from "@/components/profile/birth-datetime-fields"
 import { apiFetch } from "@/lib/api/client"
@@ -355,8 +360,9 @@ function FormField({
 /* ─── Main Onboarding Page ─── */
 export default function OnboardingPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const localizedPath = useLocalizedPath()
-  const { locale } = useTranslations()
+  const { locale, t } = useTranslations()
   const isRo = locale === "ro"
   const focusOptions = getFocusOptions(isRo)
   const [isProfileGateLoading, setIsProfileGateLoading] = useState(true)
@@ -372,6 +378,9 @@ export default function OnboardingPage() {
   const [focus, setFocus] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState("")
+  const [natalRevealData, setNatalRevealData] = useState<NatalRevealPayload | null>(null)
+  const [generationError, setGenerationError] = useState<string | null>(null)
+  const [isGeneratingDivine, setIsGeneratingDivine] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -394,6 +403,7 @@ export default function OnboardingPage() {
             mainFocus?: string
           } | null
           profileComplete?: boolean
+          natalReady?: boolean
         }>("/api/user/profile", {
           method: "GET",
         })
@@ -430,9 +440,15 @@ export default function OnboardingPage() {
           if (isMainFocus(response.profile.mainFocus)) setFocus(response.profile.mainFocus)
         }
 
-        if (response.profile && response.profileComplete) {
+        if (response.profile && response.profileComplete && response.natalReady) {
           router.replace(localizedPath("/chat"))
           return
+        }
+
+        if (response.profile && response.profileComplete && response.natalReady === false) {
+          setStep(4)
+        } else if (searchParams.get("phase") === "divine" && response.profileComplete) {
+          setStep(4)
         }
       } catch {
         // Allow onboarding to continue if profile lookup fails.
@@ -448,7 +464,7 @@ export default function OnboardingPage() {
     return () => {
       cancelled = true
     }
-  }, [localizedPath, router])
+  }, [localizedPath, router, searchParams])
 
   function canProceed() {
     if (step === 1) return name.trim().length > 0
@@ -500,7 +516,9 @@ export default function OnboardingPage() {
           },
         })
 
-        router.push(localizedPath("/chat"))
+        setGenerationError(null)
+        setNatalRevealData(null)
+        setStep(4)
       } catch (profileError) {
         setError(
           profileError instanceof Error
@@ -516,8 +534,48 @@ export default function OnboardingPage() {
   }
 
   function handleBack() {
-    if (step > 1) setStep(step - 1)
+    if (step > 1 && step <= 3) setStep(step - 1)
   }
+
+  const generateNatalChart = useCallback(async () => {
+    setIsGeneratingDivine(true)
+    setGenerationError(null)
+
+    try {
+      const response = await apiFetch<{
+        success: true
+        generated: boolean
+        cached: boolean
+        natal: NatalRevealPayload
+      }>("/api/astrology/natal", {
+        method: "POST",
+        body: { source: "onboarding" },
+      })
+
+      setNatalRevealData(response.natal)
+      setStep(5)
+    } catch (generationFailure) {
+      setGenerationError(
+        generationFailure instanceof Error
+          ? generationFailure.message
+          : t("onboarding.generation.error")
+      )
+    } finally {
+      setIsGeneratingDivine(false)
+    }
+  }, [t])
+
+  function skipToChat() {
+    const agent = getRecommendedAgentForMainFocus(focus)
+    router.push(localizedPath(`/chat?agent=${agent}`))
+  }
+
+  function startChatWithGuide() {
+    const agent = getRecommendedAgentForMainFocus(focus)
+    router.push(localizedPath(`/chat?agent=${agent}`))
+  }
+
+  const isDivinePhase = step >= 4
 
   return (
     <AuthGuard>
@@ -577,16 +635,48 @@ export default function OnboardingPage() {
         </motion.div>
 
         {/* Step indicator */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="mb-8"
-        >
-          <StepIndicator currentStep={step} isRo={isRo} />
-        </motion.div>
+        {!isDivinePhase && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="mb-8"
+          >
+            <StepIndicator currentStep={step} isRo={isRo} />
+          </motion.div>
+        )}
 
-        {/* Glassmorphism form card */}
+        {isDivinePhase && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mb-8 text-center text-xs font-medium uppercase tracking-[0.2em] text-[#B69CFF]"
+          >
+            {t("onboarding.progress.divine")}
+          </motion.p>
+        )}
+
+        {isDivinePhase ? (
+          <div className="relative z-10 flex w-full flex-col items-center px-2 py-4">
+            {step === 4 && (
+              <CosmicGenerationLoading
+                errorMessage={generationError}
+                isRetrying={isGeneratingDivine}
+                onGenerate={generateNatalChart}
+                onSkip={skipToChat}
+              />
+            )}
+            {step === 5 && natalRevealData && (
+              <NatalChartReveal
+                natal={natalRevealData}
+                onContinue={() => setStep(6)}
+              />
+            )}
+            {step === 6 && (
+              <StellarGuidesIntro mainFocus={focus} onStartChat={startChatWithGuide} />
+            )}
+          </div>
+        ) : (
         <motion.div
           initial={{ opacity: 0, y: 24, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -627,9 +717,7 @@ export default function OnboardingPage() {
                       {isRo ? "Creează-ți profilul cosmic" : "Create Your Cosmic Profile"}
                     </h2>
                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      {isRo
-                        ? "Introdu detaliile nașterii pentru recomandări personalizate de la agenții AI."
-                        : "Enter your birth details so your AI agents can personalize your readings."}
+                      {t("onboarding.step1.subtitle")}
                     </p>
                   </div>
 
@@ -912,8 +1000,10 @@ export default function OnboardingPage() {
             )}
           </div>
         </motion.div>
+        )}
 
         {/* Footer note */}
+        {!isDivinePhase && (
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -921,13 +1011,14 @@ export default function OnboardingPage() {
           className="mt-6 text-center text-xs leading-relaxed text-muted-foreground/50"
         >
           {isRo
-            ? "Datele nașterii personalizează experiența ta astrologică AI."
-            : "Your birth details help personalize your astrology AI experience."}
+            ? "Datele nașterii personalizează experiența ta astrologică."
+            : "Your birth details help personalize your astrology experience."}
           <br />
           {isRo
             ? "Nu partajăm datele tale cu terți."
             : "We never share your data with third parties."}
         </motion.p>
+        )}
 
         {/* Decorative zodiac ring (subtle) */}
         <div

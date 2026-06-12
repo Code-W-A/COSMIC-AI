@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { CosmicAuthLoading } from "@/components/auth/cosmic-auth-loading"
 import { useAuth } from "@/components/auth/auth-provider"
 import { resolvePostAuthRoute } from "@/lib/auth/resolvePostAuthRoute"
+import { logClientEvent } from "@/lib/logging/client-log"
 import { useLocalizedPath } from "@/lib/i18n/client"
 
 export function LandingAuthRedirect({ children }: { children: ReactNode }) {
@@ -20,6 +21,11 @@ export function LandingAuthRedirect({ children }: { children: ReactNode }) {
     let cancelled = false
     setRedirecting(true)
 
+    logClientEvent("auth.route", "landing_auth_redirect_started", {
+      uid: user.uid,
+      email: user.email ?? null,
+    })
+
     resolvePostAuthRoute({
       explicitNextPath: null,
       localizedPath,
@@ -28,7 +34,11 @@ export function LandingAuthRedirect({ children }: { children: ReactNode }) {
         if (!cancelled) router.replace(nextPath)
       })
       .catch(() => {
-        if (!cancelled) router.replace(localizedPath("/chat"))
+        logClientEvent("auth.route", "landing_auth_redirect_failed", {
+          uid: user.uid,
+          email: user.email ?? null,
+        })
+        if (!cancelled) router.replace(localizedPath("/onboarding"))
       })
 
     return () => {

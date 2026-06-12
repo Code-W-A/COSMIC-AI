@@ -41,6 +41,22 @@ const firebaseAuthErrorMessages: Record<string, Record<Locale, string>> = {
     en: "This email already has a password account. Sign in with password once, then click Continue with Google again.",
     ro: "Acest email are deja cont cu parolă. Conectează-te o dată cu parola, apoi apasă din nou Continuă cu Google.",
   },
+  "auth/delete-account-not-signed-in": {
+    en: "You must be signed in to delete your account.",
+    ro: "Trebuie să fii autentificat pentru a șterge contul.",
+  },
+  "auth/delete-account-email-mismatch": {
+    en: "Confirmation email does not match your account.",
+    ro: "Emailul de confirmare nu corespunde contului tău.",
+  },
+  "auth/delete-account-password-required": {
+    en: "Enter your current password to delete your account.",
+    ro: "Introdu parola actuală pentru a șterge contul.",
+  },
+  "auth/requires-recent-login": {
+    en: "Please sign in again before deleting your account.",
+    ro: "Te rugăm să te autentifici din nou înainte de a șterge contul.",
+  },
 }
 
 function getErrorCode(error: unknown): string | null {

@@ -1,9 +1,9 @@
 "use client"
 
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Sparkles,
   Send,
@@ -19,6 +19,7 @@ import {
 } from "lucide-react"
 
 import { AgentAvatar } from "@/components/agents/agent-avatar"
+import { ChatMessageCopyButton } from "@/components/chat/chat-message-copy-button"
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppLogo } from "@/components/branding/app-logo"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
@@ -27,6 +28,7 @@ import { ApiClientError, apiFetch } from "@/lib/api/client"
 import { agentAvatarCatalog } from "@/lib/agents/avatar-catalog"
 import { asksForChartDetails, getChartAccountPath } from "@/lib/chat/chart-intent"
 import { buildHandoffCtas, type MessageCta } from "@/lib/chat/agent-handoff"
+import { stripMarkdownFormatting } from "@/lib/chat/plain-text"
 import { getChatConversationPath, getNewChatPath } from "@/lib/chat/paths"
 import { logout } from "@/lib/firebase/auth"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
@@ -53,6 +55,17 @@ const suggestedPrompts = [
   "What career path fits me?",
   "Are we compatible?",
 ]
+
+function buildPartnerCompatibilityAccountPath(
+  localizedPath: (path: string) => string,
+  returnTo: string
+) {
+  const params = new URLSearchParams({
+    tab: "compatibility",
+    returnTo,
+  })
+  return localizedPath(`/account?${params.toString()}`)
+}
 
 interface Message {
   id: string
@@ -99,6 +112,10 @@ function getAgentLabel(agentType: AgentType, isRo: boolean) {
 
 function getAgentPersonaName(agentType: AgentType) {
   return agentAvatarCatalog[agentType].personaName
+}
+
+function getAgentSidebarLabel(agentType: AgentType, isRo: boolean) {
+  return `${getAgentPersonaName(agentType)} - ${getAgentLabel(agentType, isRo)}`
 }
 
 function isAbortError(error: unknown) {
@@ -166,9 +183,15 @@ export function ChatPageClient({
   conversationIdFromUrl?: string | null
 }) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const localizedPath = useLocalizedPath()
   const { locale, t } = useTranslations()
   const isRo = locale === "ro"
+  const chatReturnTo = useMemo(() => {
+    const query = searchParams.toString()
+    return query ? `${pathname}?${query}` : pathname
+  }, [pathname, searchParams])
 
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [agentsAccordionOpen, setAgentsAccordionOpen] = useState(false)
@@ -186,6 +209,7 @@ export function ChatPageClient({
   const [isTyping, setIsTyping] = useState(false)
   const [isGeneratingDivineData, setIsGeneratingDivineData] = useState(false)
   const [isPremium, setIsPremium] = useState(false)
+  const [natalReady, setNatalReady] = useState<boolean | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -221,6 +245,15 @@ export function ChatPageClient({
   }, [])
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const agentParam = params.get("agent")
+    const validAgents = agents.map((agent) => agent.id)
+    if (agentParam && validAgents.includes(agentParam as AgentType)) {
+      setActiveAgent(agentParam as AgentType)
+    }
+  }, [])
+
+  useEffect(() => {
     return () => {
       sendAbortRef.current?.abort()
     }
@@ -249,16 +282,20 @@ export function ChatPageClient({
     Promise.all([
       fetchConversations(),
       apiFetch<{ success: true } & SubscriptionStatusResponse>("/api/subscription/status").catch(() => null),
-      apiFetch<{ success: true; profile: unknown | null; profileComplete?: boolean }>("/api/user/profile").catch(() => null),
+      apiFetch<{ success: true; profile: unknown | null; profileComplete?: boolean; natalReady?: boolean }>("/api/user/profile").catch(() => null),
     ])
       .then(([conversationPayload, subscriptionPayload, profilePayload]) => {
         if (cancelled) return
-        if (
-          profilePayload &&
-          (!profilePayload.profile || profilePayload.profileComplete === false)
-        ) {
+        if (!profilePayload || profilePayload.profileComplete !== true) {
           router.replace(localizedPath("/onboarding"))
           return
+        }
+        if (profilePayload.natalReady !== true) {
+          router.replace(localizedPath("/onboarding?phase=divine"))
+          return
+        }
+        if (profilePayload) {
+          setNatalReady(profilePayload.natalReady ?? false)
         }
         setConversations(conversationPayload.conversations ?? [])
         setNextConversationsCursor(conversationPayload.nextCursor ?? null)
@@ -312,7 +349,7 @@ export function ChatPageClient({
         const hydrated = (payload.messages ?? []).map((item) => ({
           id: item.id,
           role: item.role,
-          content: item.content,
+          content: stripMarkdownFormatting(item.content),
           agentType: item.agentType,
           agent:
             item.role === "assistant"
@@ -391,7 +428,6 @@ export function ChatPageClient({
     const content = text || input.trim()
     if (!content || isTyping) return
 
-    const asksForDeepReport = /\breport\b|\bdeep\b|\bfull\b|\bcompatibility\b/i.test(content) || activeAgent === "compatibility"
     const shouldOfferChartCta = asksForChartDetails(content, activeAgent)
 
     const userMsg: Message = {
@@ -420,6 +456,7 @@ export function ChatPageClient({
           suggestedAgent?: AgentType | null
           agentHandoffReason?: string | null
           suggestedQuestion?: string | null
+          partnerActionRequired?: boolean
         }
       }>("/api/agents/chat", {
         method: "POST",
@@ -454,14 +491,34 @@ export function ChatPageClient({
           ]
         : []
 
+      const partnerActionRequired = payload.data?.partnerActionRequired === true
+      const partnerCtas: MessageCta[] = partnerActionRequired
+        ? [
+            {
+              label: t("chat.partner.addPartnerDetails"),
+              href: buildPartnerCompatibilityAccountPath(localizedPath, chatReturnTo),
+              variant: "primary",
+            },
+          ]
+        : []
+
       const aiMsg: Message = {
         id: `local-ai-${Date.now()}`,
         role: "assistant",
-        content: payload.data?.answer ?? payload.response ?? (isRo ? "Nu am putut genera un răspuns." : "I could not generate a response."),
+        content: partnerActionRequired
+          ? t("chat.partner.incompletePrompt")
+          : stripMarkdownFormatting(
+              payload.data?.answer ??
+                payload.response ??
+                (isRo ? "Nu am putut genera un răspuns." : "I could not generate a response.")
+            ),
         agent: `${activeAgentPersonaName} · ${activeAgentLabel}`,
         agentType: activeAgent,
         handoffReason: payload.data?.agentHandoffReason ?? undefined,
-        ctas: [...handoffCtas, ...chartCtas].length > 0 ? [...handoffCtas, ...chartCtas] : undefined,
+        ctas:
+          [...handoffCtas, ...chartCtas, ...partnerCtas].length > 0
+            ? [...handoffCtas, ...chartCtas, ...partnerCtas]
+            : undefined,
       }
 
       setMessages((prev) => [...prev, aiMsg])
@@ -471,27 +528,6 @@ export function ChatPageClient({
         router.replace(localizedPath(getChatConversationPath(payload.conversationId)))
       }
       await refreshConversations()
-
-      if (asksForDeepReport) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `local-cta-${Date.now()}`,
-            role: "assistant",
-            content:
-              t("chat.report.ctaPrompt"),
-            agent: "AstroAI 24/7",
-            agentType: activeAgent,
-            ctas: [
-              {
-                label: t("chat.report.ctaButton"),
-                href: localizedPath("/report"),
-                variant: "primary",
-              },
-            ],
-          },
-        ])
-      }
     } catch (chatError) {
       if (isAbortError(chatError)) {
         setInput(content)
@@ -507,7 +543,11 @@ export function ChatPageClient({
       const isProfileIncomplete =
         chatError instanceof ApiClientError &&
         (chatError.code === "cosmic_profile_missing" || chatError.code === "profile_incomplete")
+      const isPartnerIncomplete =
+        chatError instanceof ApiClientError &&
+        chatError.code === "compatibility_partner_incomplete"
       const canGenerateDivineData =
+        natalReady === false &&
         chatError instanceof ApiClientError &&
         (chatError.code === "natal_chart_missing_sun_sign" || chatError.code === "divineapi_unavailable")
 
@@ -517,10 +557,12 @@ export function ChatPageClient({
         content:
           isUsageLimit
             ? isRo
-              ? "Ai atins limita gratuită lunară. Poți face upgrade la Premium sau debloca raportul one-off."
-              : "You reached your free monthly limit. You can upgrade to Premium or unlock the one-off report."
+              ? "Ai atins limita gratuită lunară. Poți face upgrade la Premium."
+              : "You reached your free monthly limit. You can upgrade to Premium."
             : isProfileIncomplete
               ? t("chat.divine.profileIncompletePrompt")
+              : isPartnerIncomplete
+                ? t("chat.partner.incompletePrompt")
               : canGenerateDivineData
                 ? t("chat.divine.generatePrompt")
             : chatError instanceof Error
@@ -537,11 +579,6 @@ export function ChatPageClient({
                 href: localizedPath("/pricing"),
                 variant: "primary",
               },
-              {
-                label: t("chat.report.limitCta"),
-                href: localizedPath("/report"),
-                variant: "secondary",
-              },
             ]
           : isProfileIncomplete
             ? [
@@ -551,6 +588,14 @@ export function ChatPageClient({
                   variant: "primary",
                 },
               ]
+            : isPartnerIncomplete
+              ? [
+                  {
+                    label: t("chat.partner.addPartnerDetails"),
+                    href: buildPartnerCompatibilityAccountPath(localizedPath, chatReturnTo),
+                    variant: "primary",
+                  },
+                ]
             : canGenerateDivineData
               ? [
                   {
@@ -651,7 +696,10 @@ export function ChatPageClient({
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isRo ? `Întreabă agentul ${activeAgentLabel}...` : `Ask ${activeAgentLabel} Agent...`}
+            placeholder={t("chat.input.placeholder").replace(
+              "{agentName}",
+              activeAgentPersonaName
+            )}
             rows={1}
             className="max-h-36 min-h-[24px] flex-1 resize-none bg-transparent text-sm text-foreground placeholder-muted-foreground outline-none"
             onInput={(event) => {
@@ -767,7 +815,7 @@ export function ChatPageClient({
                         }`}
                       >
                         <AgentAvatar agentType={agent.id} size="sm" showRing={isActive} priority={false} />
-                        <span>{getAgentLabel(agent.id, isRo)}</span>
+                        <span>{getAgentSidebarLabel(agent.id, isRo)}</span>
                       </button>
                     )
                   })}
@@ -998,7 +1046,8 @@ export function ChatPageClient({
                         className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                       >
                         {msg.role === "user" ? (
-                          <div className="max-w-[88%] rounded-2xl rounded-br-md border border-[rgba(109,75,255,0.3)] bg-[rgba(109,75,255,0.2)] px-5 py-3 text-sm text-foreground sm:max-w-[75%]">
+                          <div className="group relative max-w-[88%] rounded-2xl rounded-br-md border border-[rgba(109,75,255,0.3)] bg-[rgba(109,75,255,0.2)] px-5 py-3 pr-10 text-sm text-foreground sm:max-w-[75%]">
+                            <ChatMessageCopyButton content={msg.content} align="left" />
                             {msg.content}
                           </div>
                         ) : (
@@ -1014,62 +1063,95 @@ export function ChatPageClient({
                                 </span>
                               </div>
                             )}
-                            <div className="rounded-2xl rounded-bl-md border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-5 py-4 text-sm leading-relaxed text-foreground">
+                            <div className="group relative rounded-2xl rounded-bl-md border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-5 py-4 pr-10 text-sm leading-relaxed text-foreground">
+                              <ChatMessageCopyButton content={msg.content} align="right" />
                               {msg.content.split("\n\n").map((paragraph, index) => (
                                 <p key={index} className={index > 0 ? "mt-3" : ""}>
                                   {paragraph}
                                 </p>
                               ))}
                             </div>
-                            {msg.handoffReason && (
-                              <p className="mt-2 text-xs text-muted-foreground">{msg.handoffReason}</p>
-                            )}
                             {msg.ctas && msg.ctas.length > 0 && (
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {msg.ctas.map((cta) =>
-                                  cta.action === "generate_divine_data" ? (
-                                    <button
-                                      key={`${msg.id}-${cta.action}-${cta.label}`}
-                                      type="button"
-                                      data-testid="chat-generate-divine-cta"
-                                      disabled={isGeneratingDivineData}
-                                      onClick={() => void handleGenerateDivineData()}
-                                      className={`rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-70 ${
-                                        cta.variant === "primary"
-                                          ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
-                                          : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
-                                      }`}
-                                    >
-                                      {isGeneratingDivineData ? t("chat.divine.generateLoading") : cta.label}
-                                    </button>
-                                  ) : cta.action === "switch_agent" && cta.targetAgent ? (
-                                    <button
+                              <div className="mt-3 space-y-3">
+                                {msg.ctas
+                                  .filter(
+                                    (cta) => cta.action === "switch_agent" && cta.targetAgent
+                                  )
+                                  .map((cta) => (
+                                    <div
                                       key={`${msg.id}-${cta.action}-${cta.targetAgent}`}
-                                      type="button"
-                                      data-testid="chat-switch-agent-cta"
-                                      onClick={() => handleSwitchAgent(cta.targetAgent!, cta.prefillQuestion)}
-                                      className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                                        cta.variant === "primary"
-                                          ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
-                                          : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
-                                      }`}
+                                      className="flex flex-col items-start gap-2"
                                     >
-                                      {cta.label}
-                                    </button>
-                                  ) : cta.href ? (
-                                    <Link
-                                      key={`${msg.id}-${cta.href}-${cta.label}`}
-                                      href={cta.href}
-                                      data-testid="chat-message-link-cta"
-                                      className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                                        cta.variant === "primary"
-                                          ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
-                                          : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
-                                      }`}
-                                    >
-                                      {cta.label}
-                                    </Link>
-                                  ) : null
+                                      <button
+                                        type="button"
+                                        data-testid="chat-switch-agent-cta"
+                                        onClick={() =>
+                                          handleSwitchAgent(cta.targetAgent!, cta.prefillQuestion)
+                                        }
+                                        className={`inline-flex items-center gap-2.5 rounded-full px-4 py-2 text-xs font-semibold ${
+                                          cta.variant === "primary"
+                                            ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
+                                            : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
+                                        }`}
+                                      >
+                                        <AgentAvatar
+                                          agentType={cta.targetAgent!}
+                                          size="sm"
+                                          showRing={false}
+                                          priority={false}
+                                        />
+                                        <span>{cta.label}</span>
+                                      </button>
+                                      {msg.handoffReason && (
+                                        <p
+                                          data-testid="chat-handoff-reason"
+                                          className="max-w-md text-xs leading-relaxed text-muted-foreground"
+                                        >
+                                          {msg.handoffReason}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ))}
+                                {msg.ctas.some(
+                                  (cta) =>
+                                    cta.action !== "switch_agent" ||
+                                    !cta.targetAgent
+                                ) && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {msg.ctas.map((cta) =>
+                                      cta.action === "generate_divine_data" ? (
+                                        <button
+                                          key={`${msg.id}-${cta.action}-${cta.label}`}
+                                          type="button"
+                                          data-testid="chat-generate-divine-cta"
+                                          disabled={isGeneratingDivineData}
+                                          onClick={() => void handleGenerateDivineData()}
+                                          className={`rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-70 ${
+                                            cta.variant === "primary"
+                                              ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
+                                              : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
+                                          }`}
+                                        >
+                                          {isGeneratingDivineData
+                                            ? t("chat.divine.generateLoading")
+                                            : cta.label}
+                                        </button>
+                                      ) : cta.action === "switch_agent" && cta.targetAgent ? null : cta.href ? (
+                                        <Link
+                                          key={`${msg.id}-${cta.href}-${cta.label}`}
+                                          href={cta.href}
+                                          data-testid="chat-message-link-cta"
+                                          className={`rounded-full px-4 py-2 text-xs font-semibold ${
+                                            cta.variant === "primary"
+                                              ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
+                                              : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
+                                          }`}
+                                        >
+                                          {cta.label}
+                                        </Link>
+                                      ) : null
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             )}

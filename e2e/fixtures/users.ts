@@ -3,7 +3,8 @@
  * truth for what `npm run e2e:seed` writes into the emulator). Keep them in sync.
  *
  * - `fresh`: authenticated but has no cosmic profile yet -> lands on onboarding.
- * - `existing`: full profile + one seeded conversation/reading -> lands on chat.
+ * - `existing`: full profile + premium subscription -> lands on chat.
+ * - `deletable`: full profile + free plan -> used only by account-delete E2E.
  */
 export interface E2EUser {
   uid: string
@@ -26,6 +27,12 @@ export const E2E_USERS = {
     email: "existing.e2e@astroai.local",
     password: TEST_PASSWORD,
     displayName: "Existing E2E User",
+  },
+  deletable: {
+    uid: "e2e-deletable-user",
+    email: "deletable.e2e@astroai.local",
+    password: TEST_PASSWORD,
+    displayName: "Deletable E2E User",
   },
 } satisfies Record<string, E2EUser>
 

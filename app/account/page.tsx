@@ -1,10 +1,15 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { LogOut, Sparkles } from "lucide-react"
 
+import { DeleteAccountSection } from "@/components/account/delete-account-section"
+import {
+  PartnerCompatibilitySection,
+  type SynastryRunRequest,
+} from "@/components/account/partner-compatibility-section"
 import {
   AccountBillingSkeleton,
   AccountDailySkeleton,
@@ -19,8 +24,10 @@ import { AuthGuard } from "@/components/auth/auth-guard"
 import { BirthPlaceAutocomplete } from "@/components/location/birth-place-autocomplete"
 import { BirthDateFields, BirthTimeFields } from "@/components/profile/birth-datetime-fields"
 import { apiFetch } from "@/lib/api/client"
+import { getNatalChartImageSrc } from "@/lib/onboarding/natal-chart-image"
 import { logout } from "@/lib/firebase/auth"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
+import { getSafeReturnToPath } from "@/lib/navigation/safe-return-to"
 import { formatZodiacSign } from "@/lib/i18n/zodiac"
 import type { ResolvedBirthLocation } from "@/lib/location/types"
 import { isSexAtBirth, type MainFocus, type SexAtBirth } from "@/types/user"
@@ -140,21 +147,7 @@ function displayString(value: unknown) {
 }
 
 function chartImageSrc(summary: DivineOverviewPayload["natal"]["summary"]) {
-  const svg = summary?.chartImageSvg
-  if (typeof svg === "string" && svg.trim()) {
-    return svg.trim().startsWith("<svg")
-      ? `data:image/svg+xml;utf8,${encodeURIComponent(svg.trim())}`
-      : svg.trim()
-  }
-
-  const base64 = summary?.chartImageBase64
-  if (typeof base64 === "string" && base64.trim()) {
-    return base64.trim().startsWith("data:")
-      ? base64.trim()
-      : `data:image/png;base64,${base64.trim()}`
-  }
-
-  return null
+  return getNatalChartImageSrc(summary)
 }
 
 type PartnerListPayload = {
@@ -175,7 +168,9 @@ type AccountSectionTab =
   | "overview"
   | "cosmic_profile"
   | "daily_guidance"
+  | "compatibility"
   | "billing"
+  | "account_settings"
 type SubscriptionStatusPayload = {
   subscriptionStatus: string
   subscriptionPlan: "free" | "premium" | string
@@ -250,19 +245,6 @@ function AccountPageContent() {
     null
   )
 
-  const [selectedPartnerId, setSelectedPartnerId] = useState("")
-  const [isAddingNewPartner, setIsAddingNewPartner] = useState(false)
-  const [newPartnerForm, setNewPartnerForm] = useState({
-    name: "",
-    birthDate: "",
-    birthTime: "",
-    birthPlace: "",
-    sexAtBirth: "" as SexAtBirth | "",
-    savePartner: true,
-  })
-  const [synastryResolvedLocation, setSynastryResolvedLocation] =
-    useState<ResolvedBirthLocation | null>(null)
-
   const [form, setForm] = useState({
     name: "",
     birthDate: "",
@@ -274,10 +256,7 @@ function AccountPageContent() {
   const [profileResolvedLocation, setProfileResolvedLocation] =
     useState<ResolvedBirthLocation | null>(null)
 
-  const selectedSavedPartner = useMemo(
-    () => partners.find((partner) => partner.id === selectedPartnerId) ?? null,
-    [partners, selectedPartnerId]
-  )
+  const returnTo = getSafeReturnToPath(searchParams.get("returnTo"))
 
   useEffect(() => {
     const tab = searchParams.get("tab")
@@ -285,7 +264,9 @@ function AccountPageContent() {
       tab === "overview" ||
       tab === "cosmic_profile" ||
       tab === "daily_guidance" ||
-      tab === "billing"
+      tab === "compatibility" ||
+      tab === "billing" ||
+      tab === "account_settings"
     ) {
       setActiveSectionTab(tab)
     }
@@ -385,6 +366,11 @@ function AccountPageContent() {
         apiFetch<{ success: true } & PartnerListPayload>("/api/partners"),
       ])
 
+      if (!overview.profileComplete) {
+        router.replace(localizedPath("/onboarding"))
+        return
+      }
+
       setDivineOverview(overview)
       setPartners(partnerPayload.partners ?? [])
       // Client-side diagnostics for Divine troubleshooting in dev.
@@ -400,14 +386,6 @@ function AccountPageContent() {
         })
       }
 
-      if ((partnerPayload.partners ?? []).length > 0) {
-        setSelectedPartnerId((prev) => {
-          if (prev && partnerPayload.partners.some((partner) => partner.id === prev)) return prev
-          return partnerPayload.partners[0].id
-        })
-      } else {
-        setSelectedPartnerId("")
-      }
     } catch (overviewError) {
       setDivineError(
         overviewError instanceof Error
@@ -578,47 +556,36 @@ function AccountPageContent() {
     }
   }
 
-  async function runSynastry(mode: "saved" | "new") {
+  async function reloadPartners() {
+    const partnerPayload = await apiFetch<{ success: true } & PartnerListPayload>("/api/partners")
+    setPartners(partnerPayload.partners ?? [])
+  }
+
+  async function runSynastry(request: SynastryRunRequest) {
     setActionBusy("synastry", true)
     try {
-      if (mode === "saved" && !selectedPartnerId) {
-        throw new Error(
-          isRo
-            ? "Selectează un partener pentru a genera citirea relațională."
-            : "Select a partner to generate the relationship reading."
-        )
-      }
-
-      if (mode === "new" && !synastryResolvedLocation) {
-        throw new Error(
-          isRo
-            ? "Selectează o locație validă din sugestii pentru partener."
-            : "Select a valid location from suggestions for the partner."
-        )
-      }
-
       const payload =
-        mode === "saved" && selectedPartnerId
+        request.mode === "saved"
           ? {
-              partnerId: selectedPartnerId,
+              partnerId: request.partnerId,
               savePartner: true,
               source: "account",
             }
           : {
               partner: {
-                name: newPartnerForm.name || undefined,
-                birthDate: newPartnerForm.birthDate,
-                birthTime: newPartnerForm.birthTime,
-                birthPlace: synastryResolvedLocation?.birthPlace ?? newPartnerForm.birthPlace,
-                birthPlacePlaceId: synastryResolvedLocation?.placeId,
-                latitude: synastryResolvedLocation?.latitude,
-                longitude: synastryResolvedLocation?.longitude,
-                timezoneIana: synastryResolvedLocation?.timezoneIana,
-                timezoneOffsetNow: synastryResolvedLocation?.timezoneOffsetNow,
-                timezoneOffsetAtBirth: synastryResolvedLocation?.timezoneOffsetAtBirth,
-                sexAtBirth: newPartnerForm.sexAtBirth,
+                name: request.name || undefined,
+                birthDate: request.birthDate,
+                birthTime: request.birthTime,
+                birthPlace: request.resolvedLocation.birthPlace,
+                birthPlacePlaceId: request.resolvedLocation.placeId,
+                latitude: request.resolvedLocation.latitude,
+                longitude: request.resolvedLocation.longitude,
+                timezoneIana: request.resolvedLocation.timezoneIana,
+                timezoneOffsetNow: request.resolvedLocation.timezoneOffsetNow,
+                timezoneOffsetAtBirth: request.resolvedLocation.timezoneOffsetAtBirth,
+                sexAtBirth: request.sexAtBirth,
               },
-              savePartner: newPartnerForm.savePartner,
+              savePartner: request.savePartner ?? true,
               source: "account",
             }
 
@@ -628,12 +595,9 @@ function AccountPageContent() {
       })
       if (IS_DEV) {
         console.info("[DivineAction] synastry success", {
-          mode,
-          partnerId: mode === "saved" ? selectedPartnerId || null : null,
+          mode: request.mode,
+          partnerId: request.mode === "saved" ? request.partnerId : null,
         })
-      }
-      if (mode === "new") {
-        setIsAddingNewPartner(false)
       }
       await loadDivineOverview()
       setActionFeedback(
@@ -643,8 +607,7 @@ function AccountPageContent() {
     } catch (synastryError) {
       if (IS_DEV) {
         console.error("[DivineAction] synastry failed", {
-          mode,
-          partnerId: mode === "saved" ? selectedPartnerId || null : null,
+          mode: request.mode,
           error: synastryError,
         })
       }
@@ -757,35 +720,6 @@ function AccountPageContent() {
   const synastryPlacements = toDisplayRecord(synastryRawData?.synastry)
   const synastryP1 = toDisplayList(synastryPlacements?.p1)
   const synastryP2 = toDisplayList(synastryPlacements?.p2)
-  const hasSavedPartners = partners.length > 0
-  const hasCompatibilityReading = Boolean(divineOverview?.synastry.generated)
-  const compatibilityPartnerName =
-    divineOverview?.synastry.partner?.name ??
-    divineOverview?.synastry.partner?.birthPlace ??
-    "—"
-  const isSavedPartnerGenerateDisabled =
-    actionLoading.synastry || !divineOverview?.profileComplete || !selectedPartnerId
-  const isNewPartnerGenerateDisabled =
-    actionLoading.synastry ||
-    !divineOverview?.profileComplete ||
-    !newPartnerForm.birthDate ||
-    !newPartnerForm.birthTime ||
-    !newPartnerForm.birthPlace ||
-    !newPartnerForm.sexAtBirth ||
-    !synastryResolvedLocation
-
-  function resetNewPartnerForm() {
-    setSynastryResolvedLocation(null)
-    setNewPartnerForm({
-      name: "",
-      birthDate: "",
-      birthTime: "",
-      birthPlace: "",
-      sexAtBirth: "",
-      savePartner: true,
-    })
-  }
-
   return (
     <AuthGuard>
       <main className="relative min-h-dvh bg-background px-4 py-10">
@@ -835,7 +769,9 @@ function AccountPageContent() {
               ["overview", t("account.tabs.overview")],
               ["cosmic_profile", t("account.tabs.cosmicProfile")],
               ["daily_guidance", t("account.tabs.dailyGuidance")],
+              ["compatibility", t("account.compatibility.title")],
               ["billing", t("account.tabs.billing")],
+              ["account_settings", t("account.tabs.accountSettings")],
             ] as Array<[AccountSectionTab, string]>).map(([tab, label]) => (
               <button
                 key={tab}
@@ -1215,6 +1151,27 @@ function AccountPageContent() {
             </section>
           )}
 
+          {activeSectionTab === "compatibility" && (
+            <PartnerCompatibilitySection
+              partners={partners}
+              divineOverview={divineOverview}
+              returnTo={returnTo}
+              isSynastryLoading={actionLoading.synastry}
+              onRunSynastry={runSynastry}
+              onPartnersChanged={reloadPartners}
+            />
+          )}
+
+          {activeSectionTab === "account_settings" && (
+            <DeleteAccountSection
+              isPremiumBlocked={Boolean(
+                subscriptionStatus?.isPremium && !subscriptionStatus.cancelAtPeriodEnd
+              )}
+              onDeleted={() => {
+                window.location.assign(localizedPath("/login"))
+              }}
+            />
+          )}
 
           {activeSectionTab === "billing" && (
             <section className="space-y-4 rounded-3xl border border-white/10 bg-[radial-gradient(120%_120%_at_30%_0%,rgba(109,75,255,0.22),rgba(10,10,20,0.94)_62%)] p-6 shadow-[0_0_70px_rgba(109,75,255,0.14)]">

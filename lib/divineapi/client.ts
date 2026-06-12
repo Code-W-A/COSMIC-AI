@@ -67,12 +67,14 @@ export async function divinePost<T>({
   body,
   includeApiKeyInBody = true,
   baseUrlOverride,
+  uid,
 }: {
   product: DivineProduct
   path: string
   body: Record<string, unknown>
   includeApiKeyInBody?: boolean
   baseUrlOverride?: string
+  uid?: string
 }): Promise<T> {
   const config = getDivineApiConfig()
   const baseUrl =
@@ -95,6 +97,7 @@ export async function divinePost<T>({
   }
 
   await logInfo("divineapi", "divineapi_request_started", {
+    ...(uid ? { uid } : {}),
     product,
     path,
     baseUrl,
@@ -118,6 +121,7 @@ export async function divinePost<T>({
         payload = JSON.parse(responseText)
       } catch (parseError) {
         await logError("divineapi", "divineapi_response_parse_failed", {
+          ...(uid ? { uid } : {}),
           product,
           path,
           status: response.status,
@@ -140,6 +144,7 @@ export async function divinePost<T>({
       const divineSuccess = isRecord(payload) ? payload.success : undefined
       const divineMessage = isRecord(payload) ? payload.msg : undefined
       await logError("divineapi", "divineapi_request_failed", {
+        ...(uid ? { uid } : {}),
         product,
         path,
         baseUrl,
@@ -162,6 +167,7 @@ export async function divinePost<T>({
     }
 
     await logInfo("divineapi", "divineapi_request_success", {
+      ...(uid ? { uid } : {}),
       product,
       path,
       baseUrl,
@@ -174,6 +180,7 @@ export async function divinePost<T>({
       throw error
     }
     await logError("divineapi", "divineapi_request_failed", {
+      ...(uid ? { uid } : {}),
       product,
       path,
       baseUrl,

@@ -137,6 +137,18 @@ const apiErrorMessages: Record<string, Record<Locale, string>> = {
     en: "Unable to save partner.",
     ro: "Nu am putut salva partenerul.",
   },
+  active_subscription_blocks_delete: {
+    en: "Cancel your active subscription before deleting your account.",
+    ro: "Anulează abonamentul activ înainte de a șterge contul.",
+  },
+  account_delete_email_mismatch: {
+    en: "Confirmation email does not match your account email.",
+    ro: "Emailul de confirmare nu corespunde emailului contului tău.",
+  },
+  account_delete_failed: {
+    en: "Unable to delete your account right now.",
+    ro: "Nu am putut șterge contul acum.",
+  },
 }
 
 export function localizeApiErrorMessage(code: string, locale: Locale, fallback?: string) {

@@ -17,6 +17,12 @@ const USERS = {
     password: TEST_PASSWORD,
     displayName: "Existing E2E User",
   },
+  deletable: {
+    uid: "e2e-deletable-user",
+    email: "deletable.e2e@astroai.local",
+    password: TEST_PASSWORD,
+    displayName: "Deletable E2E User",
+  },
 }
 
 function getProjectId() {
@@ -187,7 +193,19 @@ export async function seedEmulatorData() {
 
   await seedUser(auth, db, USERS.fresh)
   await seedUser(auth, db, USERS.existing)
+  await seedUser(auth, db, USERS.deletable)
   await seedExistingUserData(db, USERS.existing.uid)
+  await seedExistingUserData(db, USERS.deletable.uid)
+
+  await db.collection("users").doc(USERS.existing.uid).set(
+    {
+      subscriptionStatus: "active",
+      subscriptionPlan: "premium",
+      cancelAtPeriodEnd: false,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  )
 }
 
 export async function resetAndSeed() {

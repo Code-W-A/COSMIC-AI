@@ -1,3 +1,4 @@
+import { stripMarkdownFormatting } from "@/lib/chat/plain-text"
 import { agentTypes } from "@/types/agent"
 import type { AgentStructuredResponse } from "@/lib/agents/types"
 
@@ -109,16 +110,58 @@ export function validateAgentResponse(value: unknown): AgentStructuredResponse {
       : null
 
   return {
-    answer: response.answer,
-    cards: response.cards,
-    followUpQuestions: response.followUpQuestions,
+    answer: stripMarkdownFormatting(response.answer),
+    cards: response.cards.map((card) => ({
+      ...card,
+      title: stripMarkdownFormatting(card.title),
+      value: card.value ? stripMarkdownFormatting(card.value) : card.value,
+      description: card.description ? stripMarkdownFormatting(card.description) : card.description,
+      items: (card.items ?? []).map((item) => ({
+        label: stripMarkdownFormatting(item.label),
+        value: stripMarkdownFormatting(item.value),
+      })),
+    })),
+    followUpQuestions: response.followUpQuestions.map(stripMarkdownFormatting),
     suggestedAgent,
-    agentHandoffReason,
-    suggestedQuestion,
+    agentHandoffReason: agentHandoffReason
+      ? stripMarkdownFormatting(agentHandoffReason)
+      : agentHandoffReason,
+    suggestedQuestion: suggestedQuestion
+      ? stripMarkdownFormatting(suggestedQuestion)
+      : suggestedQuestion,
   }
 }
 
-export function buildMissingPartnerResponse(): AgentStructuredResponse {
+export function buildMissingPartnerResponse(locale: "en" | "ro" = "en"): AgentStructuredResponse {
+  if (locale === "ro") {
+    return {
+      answer:
+        "Pot analiza compatibilitatea după ce am datele de naștere ale partenerului. Adaugă data, ora și locul nașterii pentru a compara simbolic cele două hărți.",
+      cards: [
+        {
+          type: "compatibility_score",
+          title: "Previzualizare compatibilitate",
+          value: null,
+          description:
+            "Sunt necesare datele de naștere ale partenerului înainte de a citi dinamica relației.",
+          items: [
+            { label: "Necesar", value: "Data nașterii" },
+            { label: "Necesar", value: "Ora nașterii" },
+            { label: "Necesar", value: "Locul nașterii" },
+          ],
+        },
+      ],
+      followUpQuestions: [
+        "Care este data nașterii partenerului?",
+        "În ce oraș și țară s-a născut?",
+        "Știi ora nașterii?",
+      ],
+      suggestedAgent: null,
+      agentHandoffReason: null,
+      suggestedQuestion: null,
+    }
+  }
+
   return {
     answer:
       "I can look at compatibility once I have your partner's birth details. Share their birth date, birth time, and birth place so I can compare both charts symbolically.",

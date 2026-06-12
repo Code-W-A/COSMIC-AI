@@ -9,6 +9,7 @@ import { AppLogo } from "@/components/branding/app-logo"
 import { CosmicAuthLoading } from "@/components/auth/cosmic-auth-loading"
 import { PasswordInput } from "@/components/auth/password-input"
 import { resolvePostAuthRoute } from "@/lib/auth/resolvePostAuthRoute"
+import { logClientEvent } from "@/lib/logging/client-log"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { loginWithEmail, loginWithGoogle, registerOrLoginWithGoogle, registerWithEmail } from "@/lib/firebase/auth"
 import { localizeFirebaseAuthError } from "@/lib/i18n/firebase-auth-errors"
@@ -53,6 +54,11 @@ export function AuthForm({ mode }: AuthFormProps) {
         await loginWithEmail(email, password)
       }
 
+      logClientEvent("auth.route", "auth_form_submit_success", {
+        mode,
+        explicitNextPath,
+      })
+
       const nextPath = await resolvePostAuthRoute({
         explicitNextPath,
         localizedPath,
@@ -74,6 +80,11 @@ export function AuthForm({ mode }: AuthFormProps) {
       } else {
         await loginWithGoogle(email.trim() || undefined, password || undefined)
       }
+
+      logClientEvent("auth.route", "auth_form_google_success", {
+        mode,
+        explicitNextPath,
+      })
 
       const nextPath = await resolvePostAuthRoute({
         explicitNextPath,

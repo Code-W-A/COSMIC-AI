@@ -1,7 +1,7 @@
 import "server-only"
 
 import { divinePost } from "@/lib/divineapi/client"
-import { getDivineApiConfig } from "@/lib/divineapi/config"
+import { getDivineApiConfig, resolveDivineApiRequestLanguage } from "@/lib/divineapi/config"
 import { normalizeDailyHoroscopeResponse } from "@/lib/divineapi/normalizers"
 import {
   getDatePartsForOffset,
@@ -41,7 +41,7 @@ export async function getDailyHoroscopeFromDivineApi({
     year: String(dateParts?.year ?? date.getUTCFullYear()),
     h_day: "today",
     tzone: String(resolvedTimezone ?? config.DEFAULT_TZONE),
-    lan: language ?? config.DEFAULT_LANGUAGE,
+    lan: resolveDivineApiRequestLanguage(language),
   }
 
   await logInfo("divineapi.daily", "divineapi_daily_request_started", {

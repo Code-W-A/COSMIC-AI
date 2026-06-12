@@ -222,6 +222,15 @@ async function runDivineSmoke(location) {
     zodiac: optionalEnv("DIVINE_API_DEFAULT_ZODIAC", "tropical"),
   }
 
+  const requiredNatalFields = ["day", "month", "year", "hour", "min", "gender", "place", "tzone", "lat", "lon"]
+  const missingNatalFields = requiredNatalFields.filter((field) => {
+    const value = natalBody[field]
+    return value === undefined || value === null || value === ""
+  })
+  if (missingNatalFields.length > 0) {
+    throw new Error(`Natal smoke payload missing fields: ${missingNatalFields.join(", ")}`)
+  }
+
   let natalResult = null
   const natalErrors = []
   for (const path of natalPaths) {

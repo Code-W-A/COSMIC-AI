@@ -1,7 +1,7 @@
 import "server-only"
 
 import { DivineApiHttpError, divinePost } from "@/lib/divineapi/client"
-import { getDivineApiConfig } from "@/lib/divineapi/config"
+import { getDivineApiConfig, resolveDivineApiRequestLanguage } from "@/lib/divineapi/config"
 import { resolveDivineTimezoneOffsetHours } from "@/lib/divineapi/timezone"
 import {
   normalizeAspects,
@@ -11,6 +11,59 @@ import {
 import type { BirthDetails, NatalChartData } from "@/lib/divineapi/types"
 import type { Locale } from "@/lib/i18n/locale"
 import { logError, logInfo } from "@/lib/logging/logger"
+
+export class NatalPayloadInvalidError extends Error {
+  missingFields: string[]
+
+  constructor(missingFields: string[]) {
+    super(`Invalid natal chart payload: missing ${missingFields.join(", ")}`)
+    this.name = "NatalPayloadInvalidError"
+    this.missingFields = missingFields
+  }
+}
+
+function hasNonEmptyString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0
+}
+
+function hasFiniteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+}
+
+export function validateNatalChartPayload(payload: Record<string, unknown>) {
+  const missingFields: string[] = []
+
+  for (const field of ["day", "month", "year", "hour", "min", "gender", "place", "tzone"] as const) {
+    if (!hasNonEmptyString(payload[field])) {
+      missingFields.push(field)
+    }
+  }
+
+  if (!hasFiniteNumber(payload.lat)) missingFields.push("lat")
+  if (!hasFiniteNumber(payload.lon)) missingFields.push("lon")
+
+  if (missingFields.length > 0) {
+    throw new NatalPayloadInvalidError(missingFields)
+  }
+}
+
+function summarizeNatalPayload(payload: Record<string, unknown>) {
+  return {
+    day: payload.day,
+    month: payload.month,
+    year: payload.year,
+    hour: payload.hour,
+    min: payload.min,
+    lat: payload.lat,
+    lon: payload.lon,
+    tzone: payload.tzone,
+    lan: payload.lan,
+    house_system: payload.house_system,
+    zodiac: payload.zodiac,
+    hasPlace: hasNonEmptyString(payload.place),
+    hasGender: hasNonEmptyString(payload.gender),
+  }
+}
 
 export function birthDetailsToDateParts(birthDate: string, birthTime: string) {
   const [year = "", month = "", day = ""] = birthDate.split("-")
@@ -50,7 +103,7 @@ export function buildNatalChartPayload(birthDetails: BirthDetails, language?: Lo
     lat: birthDetails.latitude,
     lon: birthDetails.longitude,
     tzone: String(resolvedTimezone ?? config.DEFAULT_TZONE),
-    lan: language ?? config.DEFAULT_LANGUAGE,
+    lan: resolveDivineApiRequestLanguage(language),
     house_system: config.DEFAULT_HOUSE_SYSTEM,
     zodiac: config.DEFAULT_ZODIAC,
     name: birthDetails.name,
@@ -59,9 +112,20 @@ export function buildNatalChartPayload(birthDetails: BirthDetails, language?: Lo
   }
 }
 
+export async function logBuiltNatalChartPayload(
+  payload: Record<string, unknown>,
+  context?: { uid?: string }
+) {
+  await logInfo("divineapi.natal", "divineapi_natal_payload_built", {
+    ...(context?.uid ? { uid: context.uid } : {}),
+    bodySummary: summarizeNatalPayload(payload),
+  })
+}
+
 export async function getNatalChartFromDivineApi(
   birthDetails: BirthDetails,
-  language?: Locale
+  language?: Locale,
+  options?: { uid?: string }
 ): Promise<NatalChartData> {
   const config = getDivineApiConfig()
 
@@ -72,12 +136,28 @@ export async function getNatalChartFromDivineApi(
     hasCoordinates:
       typeof birthDetails.latitude === "number" && typeof birthDetails.longitude === "number",
     timezoneIana: birthDetails.timezoneIana ?? null,
-    locale: language ?? config.DEFAULT_LANGUAGE,
+    locale: language ?? null,
+    divineApiLan: resolveDivineApiRequestLanguage(language),
     pathCandidates: config.NATAL_CHART_PATH_CANDIDATES,
   })
 
   try {
     const payload = buildNatalChartPayload(birthDetails, language)
+    await logBuiltNatalChartPayload(payload, { uid: options?.uid })
+
+    try {
+      validateNatalChartPayload(payload)
+    } catch (error) {
+      if (error instanceof NatalPayloadInvalidError) {
+        await logError("divineapi.natal", "divineapi_natal_payload_invalid", {
+          ...(options?.uid ? { uid: options.uid } : {}),
+          missingFields: error.missingFields,
+          bodySummary: summarizeNatalPayload(payload),
+        })
+      }
+      throw error
+    }
+
     const primaryPaths = [
       config.NATAL_PLANETARY_POSITIONS_PATH,
       ...config.NATAL_CHART_PATH_CANDIDATES,
@@ -98,6 +178,7 @@ export async function getNatalChartFromDivineApi(
           body: payload,
           includeApiKeyInBody: true,
           baseUrlOverride,
+          uid: options?.uid,
         })
         const normalized = normalizeNatalChartResponse(raw)
 
@@ -173,6 +254,7 @@ export async function getNatalChartFromDivineApi(
           body: payload,
           includeApiKeyInBody: true,
           baseUrlOverride,
+          uid: options?.uid,
         })
         await logInfo("divineapi.natal", "divineapi_natal_supplement_success", {
           key,

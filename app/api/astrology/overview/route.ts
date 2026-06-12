@@ -12,6 +12,7 @@ import {
 } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError, logInfo } from "@/lib/logging/logger"
+import { isNatalReady } from "@/lib/divineapi/natal-overview"
 import { getProfileInputCompleteness } from "@/lib/profile/input-policy"
 
 export const runtime = "nodejs"
@@ -110,7 +111,7 @@ export async function GET(request: Request) {
       profileExists: true,
       profileComplete,
       natal: {
-        generated: Boolean(natalSummary),
+        generated: isNatalReady(profile),
         generatedAt: toDateIso(profile.natalChartGeneratedAt),
         summary: natalSummary,
         raw: INCLUDE_RAW_DIVINE ? toRecord(profile.divineNatalRaw) : null,

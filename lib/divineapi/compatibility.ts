@@ -1,7 +1,7 @@
 import "server-only"
 
 import { DivineApiHttpError, divinePost } from "@/lib/divineapi/client"
-import { getDivineApiConfig } from "@/lib/divineapi/config"
+import { getDivineApiConfig, resolveDivineApiRequestLanguage } from "@/lib/divineapi/config"
 import { getNatalChartFromDivineApi } from "@/lib/divineapi/natal"
 import { normalizeNatalChartResponse } from "@/lib/divineapi/normalizers"
 import { resolveDivineTimezoneOffsetHours } from "@/lib/divineapi/timezone"
@@ -77,7 +77,7 @@ function buildSynastryPayload(
     p2_lat: partnerBirthDetails.latitude,
     p2_lon: partnerBirthDetails.longitude,
     p2_tzone: String(partnerTimezone ?? config.DEFAULT_TZONE),
-    lan: language ?? config.DEFAULT_LANGUAGE,
+    lan: resolveDivineApiRequestLanguage(language),
     house_system: config.DEFAULT_HOUSE_SYSTEM,
     zodiac: config.DEFAULT_ZODIAC,
   }

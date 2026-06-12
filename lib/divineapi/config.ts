@@ -31,6 +31,20 @@ function pathCandidates(primary: string, fallbacks: string[]) {
   return result
 }
 
+const DIVINE_API_SUPPORTED_LANGUAGES = new Set(["en", "hi"])
+
+/** Divine western/horoscope endpoints accept a narrow language set; app locale is localized separately. */
+export function resolveDivineApiRequestLanguage(appLocale?: string) {
+  const config = getDivineApiConfig()
+
+  if (appLocale && DIVINE_API_SUPPORTED_LANGUAGES.has(appLocale)) {
+    return appLocale
+  }
+
+  const configured = config.DEFAULT_LANGUAGE
+  return DIVINE_API_SUPPORTED_LANGUAGES.has(configured) ? configured : "en"
+}
+
 export function getDivineApiConfig() {
   const authMode = optionalEnv("DIVINE_API_AUTH_MODE", "body_api_key")
 

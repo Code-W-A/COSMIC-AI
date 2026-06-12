@@ -6,10 +6,11 @@ import {
   ensureNatalChart,
   getCachedOrGenerateDailyGuidance,
   getProfileSunSign,
-  parsePartnerBirthDetails,
   profileToBirthDetails,
   saveCompatibilityData,
 } from "@/lib/agents/context"
+import { resolveCompatibilityPartnerForChat } from "@/lib/agents/partner-resolution"
+import { buildMissingPartnerResponse } from "@/lib/agents/response-format"
 import { generateAgentResponse } from "@/lib/agents/openai"
 import type { AgentStructuredResponse } from "@/lib/agents/types"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
@@ -36,7 +37,6 @@ import { getResolvedBirthLocationFromSource, ensureProfileBirthLocationForDivine
 import { LocationResolverError, resolveBirthLocation } from "@/lib/location/resolver"
 import {
   getAgentInputPolicyId,
-  getPartnerInputCompleteness,
   getProfileInputCompleteness,
 } from "@/lib/profile/input-policy"
 
@@ -124,6 +124,49 @@ export async function POST(request: Request) {
   }
 
   try {
+    const normalizedLocale: "ro" | "en" = locale === "ro" ? "ro" : "en"
+    const userDocument = await getUserDocument(user.uid)
+    const isPremium = isPremiumStatus(userDocument?.subscriptionStatus)
+    const profile = await getCosmicProfile(user.uid)
+
+    if (!profile) {
+      return errorResponse(
+        "cosmic_profile_missing",
+        "Please complete your cosmic profile first.",
+        400
+      )
+    }
+
+    const policyId = getAgentInputPolicyId(agentType)
+    const profileCompleteness = getProfileInputCompleteness(profile, policyId)
+    if (!profileCompleteness.isComplete) {
+      return errorResponse(
+        "profile_incomplete",
+        "Your profile is incomplete for this analysis. Please complete your birth details first.",
+        400
+      )
+    }
+
+    const preResolvedPartner =
+      agentType === "compatibility"
+        ? await resolveCompatibilityPartnerForChat(user.uid, body)
+        : null
+
+    if (agentType === "compatibility" && !preResolvedPartner) {
+      const aiResponse = buildMissingPartnerResponse(normalizedLocale)
+
+      return successResponse({
+        response: aiResponse.answer,
+        conversationId,
+        data: {
+          answer: aiResponse.answer,
+          cards: aiResponse.cards,
+          followUpQuestions: aiResponse.followUpQuestions,
+          partnerActionRequired: true,
+        },
+      })
+    }
+
     const usage = await incrementUsageForUser(user.uid)
 
     if (!usage.allowed) {
@@ -163,28 +206,6 @@ export async function POST(request: Request) {
       monthlyQuestionLimit: usage.monthlyQuestionLimit,
     })
 
-    const userDocument = await getUserDocument(user.uid)
-    const isPremium = isPremiumStatus(userDocument?.subscriptionStatus)
-    const profile = await getCosmicProfile(user.uid)
-
-    if (!profile) {
-      return errorResponse(
-        "cosmic_profile_missing",
-        "Please complete your cosmic profile first.",
-        400
-      )
-    }
-
-    const policyId = getAgentInputPolicyId(agentType)
-    const profileCompleteness = getProfileInputCompleteness(profile, policyId)
-    if (!profileCompleteness.isComplete) {
-      return errorResponse(
-        "profile_incomplete",
-        "Your profile is incomplete for this analysis. Please complete your birth details first.",
-        400
-      )
-    }
-
     const profileWithLocation = await ensureProfileBirthLocationForDivine({
       uid: user.uid,
       profile,
@@ -198,7 +219,6 @@ export async function POST(request: Request) {
     let aiResponse: AgentStructuredResponse | null = null
     let model: string | undefined
     let tokensUsed: number | undefined
-    const normalizedLocale: "ro" | "en" = locale === "ro" ? "ro" : "en"
 
     if (agentType === "daily_guidance") {
       const sign = natal.summary.sunSign ?? getProfileSunSign(profile)
@@ -216,38 +236,9 @@ export async function POST(request: Request) {
       ).daily
     }
 
-    if (agentType === "compatibility") {
-      const partnerCompleteness = getPartnerInputCompleteness(
-        body.partner as {
-          birthDate?: string
-          birthTime?: string
-          birthPlace?: string
-          sexAtBirth?: string
-        } | null,
-        "astrology_compatibility"
-      )
-      if (!partnerCompleteness.isComplete) {
-        return errorResponse(
-          "compatibility_partner_incomplete",
-          "Partner birth date, birth time, birth place, and sex at birth are required.",
-          400
-        )
-      }
-
-      const partner = parsePartnerBirthDetails(body.partner)
-
-      if (!partner) {
-        return errorResponse(
-          "compatibility_partner_incomplete",
-          "Partner birth date, birth time, birth place, and sex at birth are required.",
-          400
-        )
-      }
-
-      const partnerBody =
-        body.partner && typeof body.partner === "object"
-          ? (body.partner as Record<string, unknown>)
-          : {}
+    if (agentType === "compatibility" && preResolvedPartner) {
+      const partner = preResolvedPartner.partner
+      const partnerBody = preResolvedPartner.partnerBody
       const providedResolvedLocation = getResolvedBirthLocationFromSource(partnerBody)
       const resolvedLocation =
         providedResolvedLocation ??
