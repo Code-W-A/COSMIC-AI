@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useEffect, useState, useCallback } from "react"
+import { Suspense, useRef, useEffect, useState, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
@@ -359,6 +359,14 @@ function FormField({
 
 /* ─── Main Onboarding Page ─── */
 export default function OnboardingPage() {
+  return (
+    <Suspense fallback={null}>
+      <OnboardingPageContent />
+    </Suspense>
+  )
+}
+
+function OnboardingPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const localizedPath = useLocalizedPath()
