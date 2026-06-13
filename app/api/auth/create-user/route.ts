@@ -4,20 +4,33 @@ import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/respo
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { getAccountDataSnapshot } from "@/lib/firebase/account-snapshot"
 import { createUserDocumentIfMissing } from "@/lib/firebase/firestore"
+import { trackAnalyticsEvent } from "@/lib/analytics/track-server"
 import { logError, logInfo } from "@/lib/logging/logger"
+import { getRequestLocale } from "@/lib/i18n/request-locale"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function POST(request: Request) {
+  const locale = getRequestLocale(request)
   const user = await requireUser(request)
 
   if (isAuthResponse(user)) return user
+
+  const normalizedLocale: "ro" | "en" = locale === "ro" ? "ro" : "en"
 
   try {
     const beforeBootstrap = await getAccountDataSnapshot(user.uid)
     const userCreated = await createUserDocumentIfMissing(user)
     const afterBootstrap = await getAccountDataSnapshot(user.uid)
+
+    if (userCreated) {
+      await trackAnalyticsEvent("register_completed", {
+        uid: user.uid,
+        locale: normalizedLocale,
+        source: "landing",
+      })
+    }
 
     await logInfo("auth", userCreated ? "user_created" : "user_already_exists", {
       uid: user.uid,

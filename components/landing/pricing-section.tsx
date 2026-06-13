@@ -1,97 +1,104 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { Check, Loader2, Sparkles } from "lucide-react"
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { ApiClientError, apiFetch } from "@/lib/api/client"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
-import { getSubscriptionDisplayPrice } from "@/lib/pricing/display"
+import {
+  freePlanDisplayPrice,
+  getSubscriptionDisplayPrice,
+} from "@/lib/pricing/display"
 import type { BillingInterval } from "@/types/subscription"
-
-const basePlans = [
-  {
-    name: "Free",
-    plan: "free",
-    price: "$0",
-    period: "forever",
-    description: "Start exploring the cosmos",
-    features: [
-      "Basic cosmic profile",
-      "5 AI questions / month",
-      "Daily message preview",
-    ],
-    cta: "Get Started",
-    featured: false,
-  },
-  {
-    name: "Premium",
-    plan: "premium" as const,
-    monthlyPrice: "34.99 RON",
-    annualPrice: "349 RON",
-    monthlyPeriod: "/month",
-    annualPeriod: "/year",
-    description: "Unlock your full cosmic potential",
-    features: [
-      "120 AI questions / month",
-      "Birth chart interpretation",
-      "Love and career agents",
-      "Compatibility guidance",
-      "Priority support",
-    ],
-    cta: "Start Premium",
-    featured: true,
-  },
-] as const
 
 export function PricingSection() {
   const router = useRouter()
   const localizedPath = useLocalizedPath()
-  const { locale, t } = useTranslations()
+  const { t } = useTranslations()
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly")
   const [error, setError] = useState("")
-  const isRo = locale === "ro"
   const subscriptionDisplayPrice = getSubscriptionDisplayPrice(billingInterval)
-  const plans = isRo
-    ? [
-        {
-          name: "Gratuit",
-          plan: "free",
-          price: "$0",
-          period: "pentru totdeauna",
-          description: "Începe explorarea astrologică",
-          features: [
-            "Profil cosmic de bază",
-            "5 întrebări AI / lună",
-            "Preview mesaj zilnic",
-          ],
-          cta: "Începe",
-          featured: false,
-        },
-        {
-          name: "Premium",
-          plan: "premium" as const,
-          monthlyPrice: "34.99 RON",
-          annualPrice: "349 RON",
-          monthlyPeriod: "/lună",
-          annualPeriod: "/an",
-          description: "Deblochează tot potențialul cosmic",
-          features: [
-            "120 întrebări AI / lună",
-            "Interpretare hartă natală",
-            "Agenți pentru iubire și carieră",
-            "Ghidaj de compatibilitate",
-            "Suport prioritar",
-          ],
-          cta: "Activează Premium",
-          featured: true,
-        },
-      ]
-    : basePlans
 
-  async function handlePlanClick(plan: (typeof basePlans)[number]["plan"]) {
+  const plans = useMemo(
+    () => [
+      {
+        name: t("pricing.plan.free.name"),
+        plan: "free" as const,
+        price: freePlanDisplayPrice,
+        period: t("pricing.plan.free.period"),
+        description: t("pricing.plan.free.description"),
+        features: [
+          t("pricing.plan.free.feature1"),
+          t("pricing.plan.free.feature2"),
+          t("pricing.plan.free.feature3"),
+        ],
+        cta: t("pricing.plan.free.cta"),
+        featured: false,
+      },
+      {
+        name: t("pricing.plan.premium.name"),
+        plan: "premium" as const,
+        description: t("pricing.plan.premium.description"),
+        monthlyPeriod: t("pricing.plan.premium.periodMonthly"),
+        annualPeriod: t("pricing.plan.premium.periodAnnual"),
+        features: [
+          t("pricing.plan.premium.feature1"),
+          t("pricing.plan.premium.feature2"),
+          t("pricing.plan.premium.feature3"),
+          t("pricing.plan.premium.feature4"),
+          t("pricing.plan.premium.feature5"),
+        ],
+        cta: t("pricing.plan.premium.cta"),
+        microcopy: t("pricing.plan.premium.microcopy"),
+        badge: t("pricing.plan.premium.badge"),
+        featured: true,
+      },
+    ],
+    [t]
+  )
+
+  const premiumIncludes = useMemo(
+    () => [
+      t("pricing.premiumIncludes.item1"),
+      t("pricing.premiumIncludes.item2"),
+      t("pricing.premiumIncludes.item3"),
+      t("pricing.premiumIncludes.item4"),
+    ],
+    [t]
+  )
+
+  const pricingFaqs = useMemo(
+    () => [
+      {
+        question: t("pricing.faq.q1.question"),
+        answer: t("pricing.faq.q1.answer"),
+      },
+      {
+        question: t("pricing.faq.q2.question"),
+        answer: t("pricing.faq.q2.answer"),
+      },
+      {
+        question: t("pricing.faq.q3.question"),
+        answer: t("pricing.faq.q3.answer"),
+      },
+      {
+        question: t("pricing.faq.q4.question"),
+        answer: t("pricing.faq.q4.answer"),
+      },
+    ],
+    [t]
+  )
+
+  async function handlePlanClick(plan: "free" | "premium") {
     setError("")
 
     if (plan === "free") {
@@ -135,11 +142,7 @@ export function PricingSection() {
       }
 
       setError(
-        checkoutError instanceof Error
-          ? checkoutError.message
-          : isRo
-            ? "Nu am putut porni checkout-ul."
-            : "Unable to start checkout."
+        checkoutError instanceof Error ? checkoutError.message : t("pricing.checkout.error")
       )
     } finally {
       setLoadingPlan(null)
@@ -162,16 +165,14 @@ export function PricingSection() {
           className="text-center"
         >
           <span className="mb-4 inline-block text-xs font-semibold uppercase tracking-widest text-[#B69CFF]">
-            {isRo ? "Prețuri" : "Pricing"}
+            {t("pricing.eyebrow")}
           </span>
           <h2 className="text-3xl font-bold text-[#F5F2FF] text-balance sm:text-4xl lg:text-5xl">
-            {isRo ? "Alege" : "Choose your"}{" "}
-            <span className="text-gradient-cosmic">{isRo ? "planul cosmic" : "cosmic plan"}</span>
+            {t("pricing.title")}{" "}
+            <span className="text-gradient-cosmic">{t("pricing.titleHighlight")}</span>
           </h2>
           <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-[#B8B2D9]">
-            {isRo
-              ? "Începe gratuit sau deblochează insight-uri cosmice mai profunde cu Premium."
-              : "Start for free or unlock deeper cosmic insights with a premium plan."}
+            {t("pricing.subtitle")}
           </p>
         </motion.div>
 
@@ -186,7 +187,7 @@ export function PricingSection() {
                   : "text-[#B8B2D9] hover:text-[#F5F2FF]"
               }`}
             >
-              {isRo ? "Lunar" : "Monthly"}
+              {t("pricing.billing.monthly")}
             </button>
             <button
               type="button"
@@ -197,73 +198,69 @@ export function PricingSection() {
                   : "text-[#B8B2D9] hover:text-[#F5F2FF]"
               }`}
             >
-              {isRo ? "Anual" : "Annual"}
+              {t("pricing.billing.annualSave")}
             </button>
           </div>
         </div>
 
-        <div className="mt-16 grid items-center gap-6 md:grid-cols-2">
+        <div className="mt-16 grid items-stretch gap-6 md:grid-cols-2">
           {plans.map((plan, i) => (
             <motion.div
-              key={plan.name}
+              key={plan.plan}
               initial={{ opacity: 0, y: 40 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: i * 0.15 }}
               className={`group relative ${plan.featured ? "md:-mt-4 md:mb-4" : ""}`}
             >
-              {plan.featured && (
+              {plan.featured && "badge" in plan && (
                 <div className="absolute -top-4 left-1/2 z-10 -translate-x-1/2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#D66BFF] px-4 py-1.5 text-xs font-semibold text-[#F5F2FF] shadow-lg shadow-[#6D4BFF]/30">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#D66BFF] px-4 py-1.5 text-xs font-semibold text-[#F5F2FF] shadow-lg shadow-[#6D4BFF]/40 ring-1 ring-[#B69CFF]/40">
                     <Sparkles className="h-3 w-3" />
-                    {isRo ? "Cel mai popular" : "Most Popular"}
+                    {plan.badge}
                   </span>
                 </div>
               )}
               <div
-                className={`glass rounded-3xl p-8 transition-all duration-500 ${
+                className={`glass h-full rounded-3xl p-8 transition-all duration-500 ${
                   plan.featured
-                    ? "border border-[#6D4BFF]/30 bg-[rgba(109,75,255,0.08)] shadow-xl shadow-[#6D4BFF]/10"
-                    : "hover:bg-[rgba(255,255,255,0.08)]"
+                    ? "border-2 border-[#8B5CFF]/45 bg-[rgba(109,75,255,0.12)] shadow-[0_0_60px_rgba(109,75,255,0.22)] ring-1 ring-[#6D4BFF]/30"
+                    : "border border-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.08)]"
                 }`}
               >
-                <h3 className="text-lg font-semibold text-[#F5F2FF]">
-                  {plan.name}
-                </h3>
+                <h3 className="text-lg font-semibold text-[#F5F2FF]">{plan.name}</h3>
                 <p className="mt-1 text-sm text-[#B8B2D9]">{plan.description}</p>
                 <div className="mt-6 flex items-baseline gap-1">
                   <span className="text-4xl font-bold text-[#F5F2FF]">
-                    {"monthlyPrice" in plan
+                    {plan.plan === "premium"
                       ? subscriptionDisplayPrice.current
                       : plan.price}
                   </span>
                   <span className="text-sm text-[#B8B2D9]">
-                    {"monthlyPrice" in plan
+                    {plan.plan === "premium"
                       ? billingInterval === "annual"
                         ? plan.annualPeriod
                         : plan.monthlyPeriod
                       : plan.period}
                   </span>
                 </div>
-                {"monthlyPrice" in plan && (
+                {plan.plan === "premium" && (
                   <p className="mt-2 text-sm text-[#B8B2D9]">
                     <span className="line-through opacity-70">{subscriptionDisplayPrice.previous}</span>{" "}
                     <span className="font-medium text-[#B69CFF]">{t("pricing.promo.temporary")}</span>
                   </p>
                 )}
-                {"monthlyPrice" in plan && billingInterval === "annual" && (
-                  <p className="mt-2 text-xs text-[#B69CFF]">
-                    {t("pricing.promo.annual")}
-                  </p>
+                {plan.plan === "premium" && billingInterval === "annual" && (
+                  <p className="mt-2 text-xs text-[#B69CFF]">{t("pricing.promo.annual")}</p>
                 )}
 
                 <ul className="mt-8 space-y-3.5">
                   {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-center gap-3">
-                      <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#6D4BFF]/20">
+                    <li key={feature} className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#6D4BFF]/20">
                         <Check className="h-3 w-3 text-[#B69CFF]" />
                       </div>
-                      <span className="text-sm text-[#B8B2D9]">{feature}</span>
+                      <span className="text-sm leading-relaxed text-[#B8B2D9]">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -271,27 +268,79 @@ export function PricingSection() {
                 <button
                   type="button"
                   data-testid={`pricing-cta-${plan.plan}`}
-                  onClick={() => handlePlanClick(plan.plan)}
+                  onClick={() => void handlePlanClick(plan.plan)}
                   disabled={loadingPlan === plan.plan}
                   className={`mt-8 block w-full rounded-full py-3 text-center text-sm font-semibold transition-all ${
                     plan.featured
-                      ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-[#F5F2FF] shadow-lg shadow-[#6D4BFF]/20 hover:shadow-xl hover:shadow-[#6D4BFF]/30"
+                      ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-[#F5F2FF] shadow-lg shadow-[#6D4BFF]/30 hover:shadow-xl hover:shadow-[#6D4BFF]/40"
                       : "border border-[rgba(255,255,255,0.10)] bg-[rgba(255,255,255,0.05)] text-[#F5F2FF] hover:bg-[rgba(255,255,255,0.10)]"
                   }`}
                 >
                   <span className="inline-flex items-center justify-center gap-2">
                     {loadingPlan === plan.plan && <Loader2 className="h-4 w-4 animate-spin" />}
-                    {loadingPlan === plan.plan
-                      ? isRo
-                        ? "Se deschide..."
-                        : "Opening..."
-                      : plan.cta}
+                    {loadingPlan === plan.plan ? t("pricing.checkout.opening") : plan.cta}
                   </span>
                 </button>
+
+                {plan.featured && "microcopy" in plan && (
+                  <p className="mt-3 text-center text-xs leading-relaxed text-[#9F97C2]">
+                    {plan.microcopy}
+                  </p>
+                )}
               </div>
             </motion.div>
           ))}
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+          className="mx-auto mt-14 max-w-3xl rounded-3xl border border-[rgba(109,75,255,0.25)] bg-[rgba(109,75,255,0.08)] p-8 shadow-[0_0_40px_rgba(109,75,255,0.12)]"
+        >
+          <h3 className="text-center text-xl font-semibold text-[#F5F2FF]">
+            {t("pricing.premiumIncludes.title")}
+          </h3>
+          <ul className="mt-6 grid gap-4 sm:grid-cols-2">
+            {premiumIncludes.map((item) => (
+              <li key={item} className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#6D4BFF]/25">
+                  <Sparkles className="h-3 w-3 text-[#B69CFF]" />
+                </div>
+                <span className="text-sm leading-relaxed text-[#D8D2F2]">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5, delay: 0.15 }}
+          className="mx-auto mt-14 max-w-2xl"
+        >
+          <h3 className="mb-5 text-center text-xl font-semibold text-[#F5F2FF]">
+            {t("pricing.faq.title")}
+          </h3>
+          <Accordion type="single" collapsible className="space-y-3">
+            {pricingFaqs.map((faq, index) => (
+              <AccordionItem
+                key={faq.question}
+                value={`pricing-faq-${index}`}
+                className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] px-4"
+              >
+                <AccordionTrigger className="py-4 text-left text-sm font-semibold text-[#F5F2FF] hover:no-underline">
+                  {faq.question}
+                </AccordionTrigger>
+                <AccordionContent className="pb-4 text-sm leading-relaxed text-[#B8B2D9]">
+                  {faq.answer}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </motion.div>
 
         {error && (
           <p className="mx-auto mt-6 max-w-xl rounded-2xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-center text-sm text-red-100">

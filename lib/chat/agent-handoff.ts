@@ -5,7 +5,7 @@ import { isAgentType } from "@/types/agent"
 export type MessageCta = {
   label: string
   href?: string
-  action?: "generate_divine_data" | "switch_agent"
+  action?: "generate_divine_data" | "switch_agent" | "retry_send"
   targetAgent?: AgentType
   prefillQuestion?: string
   variant?: "primary" | "secondary"

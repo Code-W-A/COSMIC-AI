@@ -1,15 +1,20 @@
 import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
+import { trackFreeLimitReached } from "@/lib/analytics/track-server"
 import { logError, logInfo, logWarn } from "@/lib/logging/logger"
+import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { incrementUsageForUser, UsageUserMissingError } from "@/lib/subscription/usage"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function POST(request: Request) {
+  const locale = getRequestLocale(request)
   const user = await requireUser(request)
 
   if (isAuthResponse(user)) return user
+
+  const normalizedLocale: "ro" | "en" = locale === "ro" ? "ro" : "en"
 
   try {
     const result = await incrementUsageForUser(user.uid)
@@ -23,6 +28,13 @@ export async function POST(request: Request) {
       await logInfo("growth", "paywall_viewed", {
         uid: user.uid,
         source: "usage_increment",
+        monthlyQuestionLimit: result.monthlyQuestionLimit,
+      })
+
+      await trackFreeLimitReached({
+        uid: user.uid,
+        locale: normalizedLocale,
+        source: "chat",
         monthlyQuestionLimit: result.monthlyQuestionLimit,
       })
 

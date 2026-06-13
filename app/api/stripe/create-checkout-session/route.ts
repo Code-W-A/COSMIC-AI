@@ -10,7 +10,9 @@ import {
   getUserDocument,
   getUserRef,
 } from "@/lib/firebase/firestore"
+import { trackAnalyticsEvent } from "@/lib/analytics/track-server"
 import { logError, logInfo } from "@/lib/logging/logger"
+import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { getOneOffPriceId, getSubscriptionPriceId } from "@/lib/stripe/prices"
 import { getStripe } from "@/lib/stripe/server"
 import type {
@@ -206,6 +208,18 @@ export async function POST(request: Request) {
       interval:
         checkoutRequest.checkoutType === "subscription" ? checkoutRequest.interval : undefined,
       sku: checkoutRequest.checkoutType === "one_off" ? checkoutRequest.sku : undefined,
+    })
+
+    const checkoutLocale = getRequestLocale(request) === "ro" ? "ro" : "en"
+
+    await trackAnalyticsEvent("checkout_started", {
+      uid: user.uid,
+      locale: checkoutLocale,
+      source: "pricing",
+      checkoutType: checkoutRequest.checkoutType,
+      plan: checkoutRequest.checkoutType === "subscription" ? checkoutRequest.plan : undefined,
+      interval:
+        checkoutRequest.checkoutType === "subscription" ? checkoutRequest.interval : undefined,
     })
 
     const oneOffPriceId =

@@ -12,6 +12,7 @@ import { resolvePostAuthRoute } from "@/lib/auth/resolvePostAuthRoute"
 import { logClientEvent } from "@/lib/logging/client-log"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { loginWithEmail, loginWithGoogle, registerOrLoginWithGoogle, registerWithEmail } from "@/lib/firebase/auth"
+import { trackAnalyticsEvent } from "@/lib/analytics/track-client"
 import { localizeFirebaseAuthError } from "@/lib/i18n/firebase-auth-errors"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 
@@ -41,6 +42,10 @@ export function AuthForm({ mode }: AuthFormProps) {
     event.preventDefault()
     setError("")
     setSubmitting(true)
+
+    if (mode === "register") {
+      void trackAnalyticsEvent("register_started", { locale, source: "landing" })
+    }
 
     try {
       if (mode === "register") {
@@ -73,6 +78,10 @@ export function AuthForm({ mode }: AuthFormProps) {
   async function handleGoogleAuth() {
     setError("")
     setGoogleSubmitting(true)
+
+    if (mode === "register") {
+      void trackAnalyticsEvent("register_started", { locale, source: "landing" })
+    }
 
     try {
       if (mode === "register") {

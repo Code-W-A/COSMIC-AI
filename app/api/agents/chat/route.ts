@@ -1,6 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore"
 
-import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/responses"
+import { successResponse } from "@/lib/api/responses"
 import {
   buildAgentContext,
   ensureNatalChart,
@@ -27,6 +27,10 @@ import {
   getUserDocument,
 } from "@/lib/firebase/firestore"
 import { toFirestoreData } from "@/lib/firebase/sanitize"
+import { trackAnalyticsEvent, trackFreeLimitReached } from "@/lib/analytics/track-server"
+import { chatErrorResponse } from "@/lib/chat/error-response"
+import { classifyChatException, createChatError } from "@/lib/chat/errors"
+import { CHAT_MAX_USER_MESSAGE_CHARS } from "@/lib/chat/constants"
 import { logError, logInfo, logWarn } from "@/lib/logging/logger"
 import { isPremiumStatus } from "@/lib/subscription/subscription"
 import { incrementUsageForUser, UsageUserMissingError } from "@/lib/subscription/usage"
@@ -96,55 +100,61 @@ function buildReadingPayload({
 
 export async function POST(request: Request) {
   const locale = getRequestLocale(request)
+  const normalizedLocale: "ro" | "en" = locale === "ro" ? "ro" : "en"
   const user = await requireUser(request)
 
-  if (isAuthResponse(user)) return user
+  if (isAuthResponse(user)) {
+    return chatErrorResponse("AUTH_REQUIRED", normalizedLocale, 401)
+  }
 
   let body: Record<string, unknown>
 
   try {
     body = await request.json()
   } catch {
-    return errorResponse("invalid_json", "Request body must be valid JSON.", 400)
+    return chatErrorResponse("UNKNOWN_ERROR", normalizedLocale, 400)
   }
 
   const agentType = body.agentType
-  const message = typeof body.message === "string" ? body.message.trim() : ""
+  const rawMessage = typeof body.message === "string" ? body.message : ""
+  const message = rawMessage.trim()
   const conversationId =
     typeof body.conversationId === "string" && body.conversationId.trim()
       ? body.conversationId.trim()
       : null
 
-  if (!isAgentType(agentType) || !message) {
-    return errorResponse(
-      "invalid_agent_request",
-      "A valid agent type and message are required.",
-      400
-    )
+  if (!message) {
+    return chatErrorResponse("EMPTY_MESSAGE", normalizedLocale, 400)
   }
 
+  if (message.length > CHAT_MAX_USER_MESSAGE_CHARS) {
+    return chatErrorResponse("MESSAGE_TOO_LONG", normalizedLocale, 400)
+  }
+
+  if (!isAgentType(agentType)) {
+    return chatErrorResponse("UNKNOWN_ERROR", normalizedLocale, 400)
+  }
+
+  await trackAnalyticsEvent("chat_message_sent", {
+    uid: user.uid,
+    locale: normalizedLocale,
+    source: "chat",
+    agentType,
+  })
+
   try {
-    const normalizedLocale: "ro" | "en" = locale === "ro" ? "ro" : "en"
     const userDocument = await getUserDocument(user.uid)
     const isPremium = isPremiumStatus(userDocument?.subscriptionStatus)
     const profile = await getCosmicProfile(user.uid)
 
     if (!profile) {
-      return errorResponse(
-        "cosmic_profile_missing",
-        "Please complete your cosmic profile first.",
-        400
-      )
+      return chatErrorResponse("ONBOARDING_REQUIRED", normalizedLocale, 400)
     }
 
     const policyId = getAgentInputPolicyId(agentType)
     const profileCompleteness = getProfileInputCompleteness(profile, policyId)
     if (!profileCompleteness.isComplete) {
-      return errorResponse(
-        "profile_incomplete",
-        "Your profile is incomplete for this analysis. Please complete your birth details first.",
-        400
-      )
+      return chatErrorResponse("ONBOARDING_REQUIRED", normalizedLocale, 400)
     }
 
     const preResolvedPartner =
@@ -181,19 +191,14 @@ export async function POST(request: Request) {
         monthlyQuestionLimit: usage.monthlyQuestionLimit,
       })
 
-      return Response.json(
-        {
-          success: false,
-          error: {
-            code: "usage_limit_reached",
-            message: "You have reached your monthly free question limit.",
-          },
-          allowed: false,
-          upgradeRequired: true,
-          message: "You have reached your monthly free question limit.",
-        },
-        { status: 403 }
-      )
+      await trackFreeLimitReached({
+        uid: user.uid,
+        locale: normalizedLocale,
+        source: "chat",
+        monthlyQuestionLimit: usage.monthlyQuestionLimit,
+      })
+
+      return chatErrorResponse("USAGE_LIMIT_REACHED", normalizedLocale, 403)
     }
 
     if (usage.reset) {
@@ -224,11 +229,7 @@ export async function POST(request: Request) {
       const sign = natal.summary.sunSign ?? getProfileSunSign(profile)
 
       if (!sign) {
-        return errorResponse(
-          "natal_chart_missing_sun_sign",
-          "Please generate your natal chart first.",
-          400
-        )
+        return chatErrorResponse("ONBOARDING_REQUIRED", normalizedLocale, 400)
       }
 
       daily = (
@@ -307,102 +308,118 @@ export async function POST(request: Request) {
     })
 
     if (!aiResponse) {
-      const generated = await generateAgentResponse(context)
-      aiResponse = generated.response
-      model = generated.model
-      tokensUsed = generated.tokensUsed
+      try {
+        const generated = await generateAgentResponse(context)
+        aiResponse = generated.response
+        model = generated.model
+        tokensUsed = generated.tokensUsed
+      } catch (error) {
+        await logError("chat.openai", "agent_response_generation_failed", {
+          uid: user.uid,
+          agentType,
+          error,
+        })
+        const code = classifyChatException(error)
+        return chatErrorResponse(code, normalizedLocale, code === "UNKNOWN_ERROR" ? 500 : 503)
+      }
     }
 
     const activeConversationRef = conversationId
       ? getConversationRef(user.uid, conversationId)
       : getConversationsCollection(user.uid).doc()
-    const conversationSnapshot = await activeConversationRef.get()
+    const readingRef = getReadingsCollection(user.uid).doc()
+    let persisted = true
+    let persistenceWarning: ReturnType<typeof createChatError> | undefined
 
-    if (conversationId && !conversationSnapshot.exists) {
-      return errorResponse("conversation_not_found", "Conversation was not found.", 404)
-    }
+    try {
+      const conversationSnapshot = await activeConversationRef.get()
+      if (conversationId && !conversationSnapshot.exists) {
+        throw new Error("Conversation not found during chat persistence.")
+      }
 
-    const messagesCollection = getConversationMessagesCollection(user.uid, activeConversationRef.id)
-    const userMessageRef = messagesCollection.doc()
-    const assistantMessageRef = messagesCollection.doc()
-    const now = FieldValue.serverTimestamp()
-    const nextMessageCount = (conversationSnapshot.get("messageCount") ?? 0) + 2
-    const titleSource = conversationSnapshot.exists
-      ? conversationSnapshot.get("title")
-      : message
-    const nextTitle =
-      typeof titleSource === "string" && titleSource.trim()
-        ? titleSource.trim().slice(0, 80)
-        : message.slice(0, 80)
-    const preview = aiResponse.answer.slice(0, 180)
-    const chatBatch = activeConversationRef.firestore.batch()
+      const messagesCollection = getConversationMessagesCollection(user.uid, activeConversationRef.id)
+      const userMessageRef = messagesCollection.doc()
+      const assistantMessageRef = messagesCollection.doc()
+      const now = FieldValue.serverTimestamp()
+      const nextMessageCount = (conversationSnapshot.get("messageCount") ?? 0) + 2
+      const titleSource = conversationSnapshot.exists
+        ? conversationSnapshot.get("title")
+        : message
+      const nextTitle =
+        typeof titleSource === "string" && titleSource.trim()
+          ? titleSource.trim().slice(0, 80)
+          : message.slice(0, 80)
+      const preview = aiResponse.answer.slice(0, 180)
+      const chatBatch = activeConversationRef.firestore.batch()
 
-    chatBatch.set(
-      activeConversationRef,
-      {
-        title: nextTitle,
-        agentType,
-        lastMessagePreview: preview,
-        messageCount: nextMessageCount,
-        updatedAt: now,
-        ...(conversationSnapshot.exists ? {} : { createdAt: now }),
-      },
-      { merge: true }
-    )
-    chatBatch.set(
-      userMessageRef,
-      {
-        role: "user",
-        content: message,
-        agentType,
-        createdAt: now,
-      },
-      { merge: false }
-    )
-    chatBatch.set(
-      assistantMessageRef,
-      {
+      chatBatch.set(
+        activeConversationRef,
+        {
+          title: nextTitle,
+          agentType,
+          lastMessagePreview: preview,
+          messageCount: nextMessageCount,
+          updatedAt: now,
+          ...(conversationSnapshot.exists ? {} : { createdAt: now }),
+        },
+        { merge: true }
+      )
+      chatBatch.set(userMessageRef, { role: "user", content: message, agentType, createdAt: now })
+      chatBatch.set(assistantMessageRef, {
         role: "assistant",
         content: aiResponse.answer,
         agentType,
         createdAt: now,
         model: model ?? null,
         tokensUsed: tokensUsed ?? null,
-      },
-      { merge: false }
-    )
-    await chatBatch.commit()
+      })
+      await chatBatch.commit()
 
-    if (!conversationSnapshot.exists && !isPremium) {
-      await enforceFreeConversationLimit(user.uid, FREE_CONVERSATION_LIMIT)
-    }
+      if (!conversationSnapshot.exists && !isPremium) {
+        await enforceFreeConversationLimit(user.uid, FREE_CONVERSATION_LIMIT)
+      }
 
-    const readingRef = getReadingsCollection(user.uid).doc()
-    await readingRef.set(
-      toFirestoreData(buildReadingPayload({
+      await readingRef.set(
+        toFirestoreData(buildReadingPayload({
+          agentType,
+          message,
+          aiResponse,
+          usedAstrologyData: context.usedAstrologyData,
+          model,
+          tokensUsed,
+          isPremium,
+          locale: normalizedLocale,
+          astrologySnapshotCanonical: localizedContent.astrologySnapshotCanonical,
+          astrologySnapshotLocalized: localizedContent.astrologySnapshotLocalized,
+        }))
+      )
+
+      await logInfo("usage", "agent_response_saved", {
+        uid: user.uid,
         agentType,
-        message,
-        aiResponse,
-        usedAstrologyData: context.usedAstrologyData,
-        model,
-        tokensUsed,
-        isPremium,
-        locale: normalizedLocale,
-        astrologySnapshotCanonical: localizedContent.astrologySnapshotCanonical,
-        astrologySnapshotLocalized: localizedContent.astrologySnapshotLocalized,
-      }))
-    )
-
-    await logInfo("usage", "agent_response_saved", {
-      uid: user.uid,
-      agentType,
-      readingId: readingRef.id,
-    })
+        readingId: readingRef.id,
+      })
+    } catch (error) {
+      persisted = false
+      const warningCode = classifyChatException(error, "persistence")
+      await logError("chat.persistence", "agent_response_save_failed", {
+        uid: user.uid,
+        agentType,
+        conversationId: activeConversationRef.id,
+        error,
+      })
+      if (warningCode !== "FIREBASE_SAVE_ERROR") {
+        throw error
+      }
+      persistenceWarning = createChatError(warningCode, normalizedLocale)
+    }
 
     return successResponse({
       response: aiResponse.answer,
       conversationId: activeConversationRef.id,
-      readingId: readingRef.id,
+      readingId: persisted ? readingRef.id : null,
+      persisted,
+      ...(persistenceWarning ? { warning: persistenceWarning } : {}),
       remaining: usage.remaining,
       data: {
         answer: aiResponse.answer,
@@ -417,42 +434,24 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     if (error instanceof UsageUserMissingError) {
-      return errorResponse("user_not_found", "User profile was not found.", 404)
+      return chatErrorResponse("ONBOARDING_REQUIRED", normalizedLocale, 404)
     }
 
     await logError("usage", "agent_chat_failed", { uid: user.uid, agentType, error })
 
     if (error instanceof LocationResolverError) {
-      return errorResponse(
-        error.code,
-        error.message,
+      return chatErrorResponse(
+        error.code === "birth_location_unresolved" ? "ONBOARDING_REQUIRED" : "UNKNOWN_ERROR",
+        normalizedLocale,
         error.code === "birth_location_unresolved" ? 400 : 502
       )
     }
 
     if (error instanceof DivineApiHttpError) {
-      const code =
-        error.status === 401
-          ? "divineapi_unauthorized"
-          : error.status === 403
-            ? "divineapi_forbidden"
-            : "divineapi_unavailable"
-      const message =
-        code === "divineapi_unauthorized"
-          ? "Astrology provider authentication failed."
-          : code === "divineapi_forbidden"
-            ? "Astrology provider access was forbidden."
-            : "Astrology provider is unavailable right now."
-
-      return errorResponse(code, message, 502)
+      return chatErrorResponse("UNKNOWN_ERROR", normalizedLocale, 502)
     }
 
-    return errorResponse(
-      "agent_chat_failed",
-      process.env.NODE_ENV === "production"
-        ? "Unable to process your message."
-        : getErrorMessage(error),
-      500
-    )
+    const code = classifyChatException(error)
+    return chatErrorResponse(code, normalizedLocale, code === "UNKNOWN_ERROR" ? 500 : 503)
   }
 }

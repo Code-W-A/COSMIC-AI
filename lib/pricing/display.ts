@@ -13,12 +13,12 @@ export type DisplayPricing = {
 export const displayPricing: DisplayPricing = {
   subscription: {
     monthly: {
-      current: "34.99 RON",
+      current: "34,99 RON",
       previous: "49 RON",
     },
     annual: {
       current: "349 RON",
-      previous: "399 RON",
+      previous: "419,88 RON",
     },
   },
   oneOff: {
@@ -31,3 +31,5 @@ export function getSubscriptionDisplayPrice(interval: BillingInterval) {
     ? displayPricing.subscription.annual
     : displayPricing.subscription.monthly
 }
+
+export const freePlanDisplayPrice = "0 RON"

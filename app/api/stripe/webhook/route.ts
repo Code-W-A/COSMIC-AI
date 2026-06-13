@@ -5,6 +5,7 @@ import { errorResponse, getErrorMessage, successResponse } from "@/lib/api/respo
 import { BillingEnvError, assertStripeWebhookEnvReady } from "@/lib/billing/env"
 import { getAdminDb } from "@/lib/firebase/admin"
 import { getBillingEventRef, getReportPurchaseRef, getUserDocument, getUserRef } from "@/lib/firebase/firestore"
+import { trackAnalyticsEvent } from "@/lib/analytics/track-server"
 import { logError, logInfo, logWarn } from "@/lib/logging/logger"
 import {
   cancelOblioInvoiceForStripeInvoice,
@@ -242,6 +243,15 @@ async function syncSubscription(event: Stripe.Event, subscription: Stripe.Subscr
     cancelAtPeriodEnd: deleted ? false : subscription.cancel_at_period_end,
     isInGrace,
   })
+
+  if (deleted) {
+    await trackAnalyticsEvent("subscription_cancelled", {
+      uid,
+      source: "pricing",
+      plan: subscriptionPlan,
+      interval: billingInterval ?? undefined,
+    })
+  }
 }
 
 async function retrieveSubscription(subscriptionId: string) {
@@ -277,6 +287,19 @@ async function handleCheckoutCompleted(event: Stripe.Event) {
 
   if (subscriptionId) {
     const subscription = await retrieveSubscription(subscriptionId)
+    const priceId = getSubscriptionPriceId(subscription)
+    const subscriptionCatalog = getSubscriptionCatalogFromPriceId(priceId)
+
+    if (uid) {
+      await trackAnalyticsEvent("subscription_completed", {
+        uid,
+        source: "pricing",
+        checkoutType: checkoutType ?? "subscription",
+        plan: subscriptionCatalog.plan,
+        interval: subscriptionCatalog.interval ?? undefined,
+      })
+    }
+
     await syncSubscription(event, subscription)
     return
   }

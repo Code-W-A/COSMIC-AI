@@ -9,11 +9,13 @@ import { Testimonials } from "@/components/landing/testimonials"
 import { FAQSection } from "@/components/landing/faq-section"
 import { FinalCTA } from "@/components/landing/final-cta"
 import { Footer } from "@/components/landing/footer"
+import { LandingAnalytics } from "@/components/landing/landing-analytics"
 import { LandingAuthRedirect } from "@/components/landing/landing-auth-redirect"
 
 export default function Page() {
   return (
     <LandingAuthRedirect>
+      <LandingAnalytics />
       <main className="relative min-h-screen overflow-hidden bg-background">
         <Navigation />
         <HeroSection />

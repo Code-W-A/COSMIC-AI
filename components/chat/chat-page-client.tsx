@@ -7,7 +7,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Sparkles,
   Send,
-  Square,
   Menu,
   X,
   Plus,
@@ -19,6 +18,8 @@ import {
 } from "lucide-react"
 
 import { AgentAvatar } from "@/components/agents/agent-avatar"
+import { ChatErrorMessage } from "@/components/chat/chat-error-message"
+import { AgentThinkingIndicator } from "@/components/chat/agent-thinking-indicator"
 import { ChatMessageCopyButton } from "@/components/chat/chat-message-copy-button"
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppLogo } from "@/components/branding/app-logo"
@@ -28,6 +29,13 @@ import { ApiClientError, apiFetch } from "@/lib/api/client"
 import { agentAvatarCatalog } from "@/lib/agents/avatar-catalog"
 import { asksForChartDetails, getChartAccountPath } from "@/lib/chat/chart-intent"
 import { buildHandoffCtas, type MessageCta } from "@/lib/chat/agent-handoff"
+import { CHAT_MAX_USER_MESSAGE_CHARS } from "@/lib/chat/constants"
+import {
+  CHAT_ERROR_DEFINITIONS,
+  isChatErrorCode,
+  type ChatApiError,
+  type ChatErrorCode,
+} from "@/lib/chat/errors"
 import { stripMarkdownFormatting } from "@/lib/chat/plain-text"
 import { getChatConversationPath, getNewChatPath } from "@/lib/chat/paths"
 import { logout } from "@/lib/firebase/auth"
@@ -67,6 +75,14 @@ function buildPartnerCompatibilityAccountPath(
   return localizedPath(`/account?${params.toString()}`)
 }
 
+type MessageDeliveryStatus = "sending" | "sent" | "streaming" | "completed" | "failed"
+
+interface ChatRetryRequest {
+  content: string
+  agentType: AgentType
+  conversationId: string | null
+}
+
 interface Message {
   id: string
   role: "user" | "assistant"
@@ -75,6 +91,11 @@ interface Message {
   agentType?: AgentType
   handoffReason?: string
   ctas?: MessageCta[]
+  deliveryStatus?: MessageDeliveryStatus
+  retryRequest?: ChatRetryRequest
+  pendingStartedAt?: number
+  error?: ChatApiError
+  warningCode?: "FIREBASE_SAVE_ERROR"
 }
 
 interface ConversationSummary {
@@ -120,21 +141,6 @@ function getAgentSidebarLabel(agentType: AgentType, isRo: boolean) {
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError"
-}
-
-function TypingIndicator() {
-  return (
-    <div className="flex items-center gap-1.5 px-1 py-1">
-      {[0, 1, 2].map((i) => (
-        <motion.span
-          key={i}
-          className="block h-1.5 w-1.5 rounded-full bg-cosmic-lavender"
-          animate={{ opacity: [0.3, 1, 0.3], scale: [0.85, 1.1, 0.85] }}
-          transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2, ease: "easeInOut" }}
-        />
-      ))}
-    </div>
-  )
 }
 
 function ConversationsSkeletonList() {
@@ -206,7 +212,7 @@ export function ChatPageClient({
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
-  const [isTyping, setIsTyping] = useState(false)
+  const [composerError, setComposerError] = useState("")
   const [isGeneratingDivineData, setIsGeneratingDivineData] = useState(false)
   const [isPremium, setIsPremium] = useState(false)
   const [natalReady, setNatalReady] = useState<boolean | null>(null)
@@ -231,7 +237,8 @@ export function ChatPageClient({
 
   const activeAgentLabel = getAgentLabel(activeAgent, isRo)
   const activeAgentPersonaName = getAgentPersonaName(activeAgent)
-  const isNewChatState = !loadingMessages && messages.length === 0 && !isTyping
+  const isAwaitingResponse = messages.some((message) => message.deliveryStatus === "streaming")
+  const isNewChatState = !loadingMessages && messages.length === 0 && !isAwaitingResponse
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -265,7 +272,7 @@ export function ChatPageClient({
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, isTyping, scrollToBottom])
+  }, [messages, isAwaitingResponse, scrollToBottom])
 
   async function fetchConversations(cursor?: string | null) {
     const search = new URLSearchParams({ limit: "20" })
@@ -351,6 +358,7 @@ export function ChatPageClient({
           role: item.role,
           content: stripMarkdownFormatting(item.content),
           agentType: item.agentType,
+          deliveryStatus: "completed" as const,
           agent:
             item.role === "assistant"
               ? `${getAgentPersonaName(item.agentType)} · ${getAgentLabel(item.agentType, isRo)}`
@@ -424,17 +432,72 @@ export function ChatPageClient({
     }
   }
 
-  async function handleSend(text?: string) {
-    const content = text || input.trim()
-    if (!content || isTyping) return
+  function buildRetryCta(): MessageCta {
+    return {
+      label: t("chat.waiting.retry"),
+      action: "retry_send",
+      variant: "primary",
+    }
+  }
 
-    const shouldOfferChartCta = asksForChartDetails(content, activeAgent)
+  function validateSendContent(content: string) {
+    if (!content.trim()) return t("chat.error.EMPTY_MESSAGE")
+    if (content.length > CHAT_MAX_USER_MESSAGE_CHARS) return t("chat.error.MESSAGE_TOO_LONG")
+    return null
+  }
+
+  function handleRetrySend(request: ChatRetryRequest, failedAssistantId: string) {
+    void handleSend(undefined, { retryRequest: request, assistantId: failedAssistantId })
+  }
+
+  async function handleSend(
+    text?: string,
+    options?: { retryRequest?: ChatRetryRequest; assistantId?: string }
+  ) {
+    const retryRequest = options?.retryRequest
+    const content = (retryRequest?.content ?? text ?? input).trim()
+    const validationError = validateSendContent(content)
+
+    if (validationError) {
+      setComposerError(validationError)
+      return
+    }
+
+    if (isAwaitingResponse) return
+
+    setComposerError("")
+
+    const requestAgent = retryRequest?.agentType ?? activeAgent
+    const requestConversationId = retryRequest?.conversationId ?? activeConversationId
+    const requestSnapshot: ChatRetryRequest = {
+      content,
+      agentType: requestAgent,
+      conversationId: requestConversationId,
+    }
+    const requestAgentLabel = getAgentLabel(requestAgent, isRo)
+    const requestAgentPersonaName = getAgentPersonaName(requestAgent)
+    const shouldOfferChartCta = asksForChartDetails(content, requestAgent)
+    const pendingId = options?.assistantId ?? `local-assistant-pending-${Date.now()}`
+    const pendingStartedAt = Date.now()
+    const isRetry = Boolean(retryRequest && options?.assistantId)
 
     const userMsg: Message = {
       id: `local-user-${Date.now()}`,
       role: "user",
       content,
-      agentType: activeAgent,
+      agentType: requestAgent,
+      deliveryStatus: "sending",
+    }
+
+    const pendingMsg: Message = {
+      id: pendingId,
+      role: "assistant",
+      content: "",
+      agent: `${requestAgentPersonaName} · ${requestAgentLabel}`,
+      agentType: requestAgent,
+      deliveryStatus: "streaming",
+      retryRequest: requestSnapshot,
+      pendingStartedAt,
     }
 
     sendAbortRef.current?.abort()
@@ -442,15 +505,31 @@ export function ChatPageClient({
     sendAbortRef.current = controller
     const generation = ++sendGenerationRef.current
 
-    setMessages((prev) => [...prev, userMsg])
-    setInput("")
-    setIsTyping(true)
+    setMessages((prev) => {
+      if (isRetry) {
+        return prev.map((message) => (message.id === pendingId ? pendingMsg : message))
+      }
+      return [...prev, userMsg, pendingMsg]
+    })
+
+    if (!isRetry) {
+      setInput("")
+      queueMicrotask(() => {
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === userMsg.id ? { ...message, deliveryStatus: "sent" } : message
+          )
+        )
+      })
+    }
 
     try {
       const payload = await apiFetch<{
         success: true
         response?: string
         conversationId: string
+        persisted?: boolean
+        warning?: ChatApiError
         data?: {
           answer?: string
           suggestedAgent?: AgentType | null
@@ -462,9 +541,9 @@ export function ChatPageClient({
         method: "POST",
         signal: controller.signal,
         body: {
-          agentType: activeAgent,
+          agentType: requestAgent,
           message: content,
-          conversationId: activeConversationId,
+          conversationId: requestConversationId,
         },
       })
 
@@ -476,7 +555,7 @@ export function ChatPageClient({
           agentHandoffReason: payload.data?.agentHandoffReason,
           suggestedQuestion: payload.data?.suggestedQuestion,
         },
-        activeAgent,
+        requestAgent,
         formatHandoffContinueLabel,
         (agentType) => getAgentLabel(agentType, isRo)
       )
@@ -485,7 +564,7 @@ export function ChatPageClient({
         ? [
             {
               label: t("chat.sidebar.profileAndReadings"),
-              href: localizedPath(getChartAccountPath(activeAgent)),
+              href: localizedPath(getChartAccountPath(requestAgent)),
               variant: "primary",
             },
           ]
@@ -502,8 +581,8 @@ export function ChatPageClient({
           ]
         : []
 
-      const aiMsg: Message = {
-        id: `local-ai-${Date.now()}`,
+      const completedMsg: Message = {
+        id: pendingId,
         role: "assistant",
         content: partnerActionRequired
           ? t("chat.partner.incompletePrompt")
@@ -512,8 +591,14 @@ export function ChatPageClient({
                 payload.response ??
                 (isRo ? "Nu am putut genera un răspuns." : "I could not generate a response.")
             ),
-        agent: `${activeAgentPersonaName} · ${activeAgentLabel}`,
-        agentType: activeAgent,
+        agent: `${requestAgentPersonaName} · ${requestAgentLabel}`,
+        agentType: requestAgent,
+        deliveryStatus: "completed",
+        retryRequest: requestSnapshot,
+        warningCode:
+          payload.persisted === false && payload.warning?.code === "FIREBASE_SAVE_ERROR"
+            ? "FIREBASE_SAVE_ERROR"
+            : undefined,
         handoffReason: payload.data?.agentHandoffReason ?? undefined,
         ctas:
           [...handoffCtas, ...chartCtas, ...partnerCtas].length > 0
@@ -521,100 +606,56 @@ export function ChatPageClient({
             : undefined,
       }
 
-      setMessages((prev) => [...prev, aiMsg])
+      setMessages((prev) => prev.map((message) => (message.id === pendingId ? completedMsg : message)))
       setDraftConversationId(payload.conversationId)
       if (!conversationIdFromUrl) {
         skipNextLoadRef.current = payload.conversationId
         router.replace(localizedPath(getChatConversationPath(payload.conversationId)))
       }
-      await refreshConversations()
+      if (payload.persisted !== false) {
+        await refreshConversations().catch(() => undefined)
+      }
     } catch (chatError) {
       if (isAbortError(chatError)) {
-        setInput(content)
         return
       }
 
       if (generation !== sendGenerationRef.current) return
 
-      const isUsageLimit =
-        chatError instanceof ApiClientError &&
-        chatError.status === 403 &&
-        (chatError.code === "usage_limit_reached" || chatError.code === "request_failed" || chatError.code === "upgrade_required")
-      const isProfileIncomplete =
-        chatError instanceof ApiClientError &&
-        (chatError.code === "cosmic_profile_missing" || chatError.code === "profile_incomplete")
-      const isPartnerIncomplete =
-        chatError instanceof ApiClientError &&
-        chatError.code === "compatibility_partner_incomplete"
-      const canGenerateDivineData =
-        natalReady === false &&
-        chatError instanceof ApiClientError &&
-        (chatError.code === "natal_chart_missing_sun_sign" || chatError.code === "divineapi_unavailable")
-
-      const aiMsg: Message = {
-        id: `local-error-${Date.now()}`,
-        role: "assistant",
-        content:
-          isUsageLimit
-            ? isRo
-              ? "Ai atins limita gratuită lunară. Poți face upgrade la Premium."
-              : "You reached your free monthly limit. You can upgrade to Premium."
-            : isProfileIncomplete
-              ? t("chat.divine.profileIncompletePrompt")
-              : isPartnerIncomplete
-                ? t("chat.partner.incompletePrompt")
-              : canGenerateDivineData
-                ? t("chat.divine.generatePrompt")
-            : chatError instanceof Error
-              ? chatError.message
-              : isRo
-                ? "Mesajul nu a putut fi procesat acum."
-                : "Unable to process your message right now.",
-        agent: `${activeAgentPersonaName} · ${activeAgentLabel}`,
-        agentType: activeAgent,
-        ctas: isUsageLimit
-          ? [
-              {
-                label: isRo ? "Upgrade Premium" : "Upgrade Premium",
-                href: localizedPath("/pricing"),
-                variant: "primary",
-              },
-            ]
-          : isProfileIncomplete
-            ? [
-                {
-                  label: t("chat.divine.goToOnboarding"),
-                  href: localizedPath("/onboarding"),
-                  variant: "primary",
-                },
-              ]
-            : isPartnerIncomplete
-              ? [
-                  {
-                    label: t("chat.partner.addPartnerDetails"),
-                    href: buildPartnerCompatibilityAccountPath(localizedPath, chatReturnTo),
-                    variant: "primary",
-                  },
-                ]
-            : canGenerateDivineData
-              ? [
-                  {
-                    label: t("chat.divine.generateNow"),
-                    action: "generate_divine_data",
-                    variant: "primary",
-                  },
-                  {
-                    label: t("chat.sidebar.profileAndReadings"),
-                    href: localizedPath("/account"),
-                    variant: "secondary",
-                  },
-                ]
-          : undefined,
+      const errorCode: ChatErrorCode =
+        chatError instanceof ApiClientError && isChatErrorCode(chatError.code)
+          ? chatError.code
+          : chatError instanceof ApiClientError
+            ? "UNKNOWN_ERROR"
+            : "NETWORK_ERROR"
+      const definition = CHAT_ERROR_DEFINITIONS[errorCode]
+      const error: ChatApiError = {
+        code: errorCode,
+        message: definition.messages[locale],
+        retryable:
+          chatError instanceof ApiClientError && chatError.retryable !== null
+            ? chatError.retryable
+            : definition.retryable,
+        action:
+          chatError instanceof ApiClientError && chatError.action !== null
+            ? chatError.action
+            : definition.action,
       }
-      setMessages((prev) => [...prev, aiMsg])
+
+      const errorMsg: Message = {
+        id: pendingId,
+        role: "assistant",
+        content: "",
+        agent: `${requestAgentPersonaName} · ${requestAgentLabel}`,
+        agentType: requestAgent,
+        deliveryStatus: "failed",
+        retryRequest: requestSnapshot,
+        error,
+      }
+
+      setMessages((prev) => prev.map((message) => (message.id === pendingId ? errorMsg : message)))
     } finally {
       if (generation === sendGenerationRef.current) {
-        setIsTyping(false)
         sendAbortRef.current = null
       }
     }
@@ -624,7 +665,20 @@ export function ChatPageClient({
     sendGenerationRef.current += 1
     sendAbortRef.current?.abort()
     sendAbortRef.current = null
-    setIsTyping(false)
+
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.deliveryStatus === "streaming"
+          ? {
+              ...message,
+              content: t("chat.waiting.stopped"),
+              deliveryStatus: "failed",
+              error: undefined,
+              ctas: [buildRetryCta()],
+            }
+          : message
+      )
+    )
   }
 
   async function handleGenerateDivineData() {
@@ -654,15 +708,13 @@ export function ChatPageClient({
           agentType: activeAgent,
         },
       ])
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : t("chat.divine.generateFailed")
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
           id: `local-divine-failed-${Date.now()}`,
           role: "assistant",
-          content: `${t("chat.divine.generateFailed")}\n\n${message}`,
+          content: t("chat.divine.generateFailed"),
           agent: `${activeAgentPersonaName} · ${activeAgentLabel}`,
           agentType: activeAgent,
           ctas: [
@@ -694,7 +746,10 @@ export function ChatPageClient({
             ref={inputRef}
             data-testid="chat-input"
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value)
+              if (composerError) setComposerError("")
+            }}
             onKeyDown={handleKeyDown}
             placeholder={t("chat.input.placeholder").replace(
               "{agentName}",
@@ -708,28 +763,25 @@ export function ChatPageClient({
               element.style.height = `${Math.min(element.scrollHeight, 144)}px`
             }}
           />
-          {isTyping ? (
-            <button
-              type="button"
-              data-testid="chat-stop-button"
-              onClick={handleStopSend}
-              aria-label={t("chat.stopSending")}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.08)] text-foreground transition hover:bg-[rgba(255,255,255,0.14)]"
-            >
-              <Square className="h-4 w-4 fill-current" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              data-testid="chat-send-button"
-              onClick={() => void handleSend()}
-              disabled={!input.trim()}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground disabled:opacity-40"
-            >
-              <Send className="h-4 w-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            data-testid="chat-send-button"
+            onClick={() => void handleSend()}
+            disabled={!input.trim() || isAwaitingResponse}
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground disabled:opacity-40"
+          >
+            <Send className="h-4 w-4" />
+          </button>
         </div>
+        {composerError ? (
+          <p
+            data-testid="chat-composer-error"
+            className="mt-2 px-1 text-xs text-[#FFB4B4]"
+            role="alert"
+          >
+            {composerError}
+          </p>
+        ) : null}
       </div>
     )
   }
@@ -742,7 +794,7 @@ export function ChatPageClient({
             key={prompt}
             data-testid="chat-suggested-prompt"
             onClick={() => void handleSend(prompt)}
-            disabled={isTyping}
+            disabled={isAwaitingResponse}
             className="rounded-full border border-border bg-[rgba(255,255,255,0.03)] px-3 py-1.5 text-xs text-muted-foreground transition hover:text-foreground disabled:opacity-50"
           >
             {prompt}
@@ -1043,13 +1095,22 @@ export function ChatPageClient({
                       <div
                         key={msg.id}
                         data-testid={msg.role === "user" ? "chat-message-user" : "chat-message-assistant"}
+                        data-message-status={msg.deliveryStatus ?? "completed"}
                         className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                       >
                         {msg.role === "user" ? (
-                          <div className="group relative max-w-[88%] rounded-2xl rounded-br-md border border-[rgba(109,75,255,0.3)] bg-[rgba(109,75,255,0.2)] px-5 py-3 pr-10 text-sm text-foreground sm:max-w-[75%]">
-                            <ChatMessageCopyButton content={msg.content} align="left" />
+                          <div className="group relative max-w-[88%] rounded-2xl rounded-br-md border border-[rgba(109,75,255,0.3)] bg-[rgba(109,75,255,0.2)] px-5 pb-3 pt-9 pr-10 text-sm text-foreground sm:max-w-[75%]">
+                            <ChatMessageCopyButton content={msg.content} align="right" />
                             {msg.content}
                           </div>
+                        ) : msg.deliveryStatus === "streaming" ? (
+                          <AgentThinkingIndicator
+                            agentType={msg.agentType ?? activeAgent}
+                            getAgentLabel={(agentType) => getAgentLabel(agentType, isRo)}
+                            hasAstralProfile={natalReady === true}
+                            startedAt={msg.pendingStartedAt ?? Date.now()}
+                            onStop={handleStopSend}
+                          />
                         ) : (
                           <div className="max-w-[92%] sm:max-w-[82%]">
                             {msg.agent && (
@@ -1063,14 +1124,36 @@ export function ChatPageClient({
                                 </span>
                               </div>
                             )}
-                            <div className="group relative rounded-2xl rounded-bl-md border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-5 py-4 pr-10 text-sm leading-relaxed text-foreground">
-                              <ChatMessageCopyButton content={msg.content} align="right" />
-                              {msg.content.split("\n\n").map((paragraph, index) => (
-                                <p key={index} className={index > 0 ? "mt-3" : ""}>
-                                  {paragraph}
-                                </p>
-                              ))}
-                            </div>
+                            {msg.deliveryStatus === "failed" && msg.error ? (
+                              <ChatErrorMessage
+                                errorCode={msg.error.code}
+                                retryable={msg.error.retryable}
+                                action={msg.error.action}
+                                onRetry={
+                                  msg.retryRequest
+                                    ? () => handleRetrySend(msg.retryRequest!, msg.id)
+                                    : undefined
+                                }
+                              />
+                            ) : (
+                              <div className="group relative rounded-2xl rounded-bl-md border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-5 py-4 pr-10 text-sm leading-relaxed text-foreground">
+                                {msg.content ? <ChatMessageCopyButton content={msg.content} align="right" /> : null}
+                                {msg.content.split("\n\n").map((paragraph, index) => (
+                                  <p key={index} className={index > 0 ? "mt-3" : ""}>
+                                    {paragraph}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                            {msg.warningCode ? (
+                              <div className="mt-2">
+                                <ChatErrorMessage
+                                  errorCode={msg.warningCode}
+                                  retryable={false}
+                                  action="none"
+                                />
+                              </div>
+                            ) : null}
                             {msg.ctas && msg.ctas.length > 0 && (
                               <div className="mt-3 space-y-3">
                                 {msg.ctas
@@ -1136,6 +1219,25 @@ export function ChatPageClient({
                                             ? t("chat.divine.generateLoading")
                                             : cta.label}
                                         </button>
+                                      ) : cta.action === "retry_send" ? (
+                                        <button
+                                          key={`${msg.id}-${cta.action}-${cta.label}`}
+                                          type="button"
+                                          data-testid="chat-retry-button"
+                                          disabled={isAwaitingResponse || !msg.retryRequest}
+                                          onClick={() => {
+                                            if (msg.retryRequest) {
+                                              handleRetrySend(msg.retryRequest, msg.id)
+                                            }
+                                          }}
+                                          className={`rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-70 ${
+                                            cta.variant === "primary"
+                                              ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
+                                              : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
+                                          }`}
+                                        >
+                                          {cta.label}
+                                        </button>
                                       ) : cta.action === "switch_agent" && cta.targetAgent ? null : cta.href ? (
                                         <Link
                                           key={`${msg.id}-${cta.href}-${cta.label}`}
@@ -1159,22 +1261,6 @@ export function ChatPageClient({
                         )}
                       </div>
                     ))}
-
-                    <AnimatePresence>
-                      {isTyping && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0 }}
-                          data-testid="chat-typing-indicator"
-                          className="flex justify-start"
-                        >
-                          <div className="max-w-[82%] rounded-2xl rounded-bl-md border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-5 py-4">
-                            <TypingIndicator />
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
                   </>
                 )}
               </div>

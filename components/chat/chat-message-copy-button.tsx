@@ -67,7 +67,7 @@ export function ChatMessageCopyButton({
           aria-label={t("chat.copy.action")}
           disabled={isCopying}
           onClick={() => void handleCopy()}
-          className={`absolute ${positionClass} z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-[rgba(255,255,255,0.1)] bg-[rgba(7,3,17,0.75)] text-muted-foreground opacity-50 backdrop-blur-sm transition-all hover:border-[rgba(109,75,255,0.35)] hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6D4BFF]/50 disabled:opacity-40 sm:opacity-0 sm:group-hover:opacity-100`}
+          className={`absolute ${positionClass} z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-[rgba(255,255,255,0.1)] bg-[rgba(7,3,17,0.75)] text-muted-foreground backdrop-blur-sm transition-all hover:border-[rgba(109,75,255,0.35)] hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6D4BFF]/50 disabled:opacity-40 max-sm:opacity-80 sm:opacity-0 sm:group-hover:opacity-100`}
         >
           <Copy className="h-3.5 w-3.5" />
         </button>

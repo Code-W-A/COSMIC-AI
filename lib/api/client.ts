@@ -4,6 +4,7 @@ import { onAuthStateChanged } from "firebase/auth"
 import type { User } from "firebase/auth"
 
 import { getFirebaseAuth, hasFirebaseClientConfig } from "@/lib/firebase/client"
+import { isChatErrorAction, type ChatErrorAction } from "@/lib/chat/errors"
 import { localizeApiErrorMessage } from "@/lib/i18n/api-errors"
 import { resolveClientLocale } from "@/lib/i18n/client"
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locale"
@@ -12,13 +13,24 @@ export class ApiClientError extends Error {
   code: string
   status: number
   payload: unknown
+  retryable: boolean | null
+  action: ChatErrorAction | null
 
-  constructor(code: string, message: string, status: number, payload?: unknown) {
+  constructor(
+    code: string,
+    message: string,
+    status: number,
+    payload?: unknown,
+    retryable: boolean | null = null,
+    action: ChatErrorAction | null = null
+  ) {
     super(message)
     this.name = "ApiClientError"
     this.code = code
     this.status = status
     this.payload = payload
+    this.retryable = retryable
+    this.action = action
   }
 }
 
@@ -116,7 +128,9 @@ export async function apiFetch<TResponse = unknown>(
       code,
       localizeApiErrorMessage(code, locale, payload?.error?.message ?? fallbackMessage),
       response.status,
-      payload
+      payload,
+      typeof payload?.error?.retryable === "boolean" ? payload.error.retryable : null,
+      isChatErrorAction(payload?.error?.action) ? payload.error.action : null
     )
   }
 

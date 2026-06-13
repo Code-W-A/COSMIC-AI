@@ -29,6 +29,7 @@ import type { NatalRevealPayload } from "@/lib/divineapi/natal-overview"
 import { getRecommendedAgentForMainFocus } from "@/lib/onboarding/main-focus-agent"
 import { BirthPlaceAutocomplete } from "@/components/location/birth-place-autocomplete"
 import { BirthDateFields, BirthTimeFields } from "@/components/profile/birth-datetime-fields"
+import { trackAnalyticsEvent } from "@/lib/analytics/track-client"
 import { apiFetch } from "@/lib/api/client"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 import type { ResolvedBirthLocation } from "@/lib/location/types"
@@ -389,6 +390,17 @@ function OnboardingPageContent() {
   const [natalRevealData, setNatalRevealData] = useState<NatalRevealPayload | null>(null)
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [isGeneratingDivine, setIsGeneratingDivine] = useState(false)
+  const onboardingStartedTrackedRef = useRef(false)
+
+  useEffect(() => {
+    if (isProfileGateLoading || step !== 1 || onboardingStartedTrackedRef.current) return
+
+    onboardingStartedTrackedRef.current = true
+    void trackAnalyticsEvent("onboarding_started", {
+      locale: isRo ? "ro" : "en",
+      source: "onboarding",
+    })
+  }, [isProfileGateLoading, isRo, step])
 
   useEffect(() => {
     let cancelled = false

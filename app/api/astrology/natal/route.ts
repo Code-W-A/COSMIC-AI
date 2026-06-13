@@ -8,6 +8,7 @@ import { buildNatalGenerationResponse } from "@/lib/divineapi/natal-overview"
 import { NatalPayloadInvalidError } from "@/lib/divineapi/natal"
 import { getCosmicProfile, getCosmicProfileRef } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
+import { trackAnalyticsEvent } from "@/lib/analytics/track-server"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { ensureProfileBirthLocationForDivine } from "@/lib/location/profile-location"
 import { LocationResolverError } from "@/lib/location/resolver"
@@ -106,6 +107,12 @@ export async function POST(request: Request) {
           planets: summary.planets.length,
           houses: summary.houses.length,
         })
+
+        await trackAnalyticsEvent("onboarding_completed", {
+          uid: user.uid,
+          locale: locale === "ro" ? "ro" : "en",
+          source: "onboarding",
+        })
       }
 
       return successResponse(
@@ -152,6 +159,12 @@ export async function POST(request: Request) {
         cached,
         planets: natal.summary.planets?.length ?? 0,
         houses: natal.summary.houses?.length ?? 0,
+      })
+
+      await trackAnalyticsEvent("onboarding_completed", {
+        uid: user.uid,
+        locale: locale === "ro" ? "ro" : "en",
+        source: "onboarding",
       })
     } else {
       await logInfo("divineapi.natal", "divine.natal_generate_completed", {
