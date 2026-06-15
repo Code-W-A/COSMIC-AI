@@ -37,36 +37,37 @@ function formatDate(value: string | null | undefined, locale: "ro" | "en") {
 
 export function SubscriptionCard() {
   const localizedPath = useLocalizedPath()
-  const { locale } = useTranslations()
+  const { locale, t } = useTranslations()
   const isRo = locale === "ro"
   const [status, setStatus] = useState<SubscriptionStatusResponse | null>(null)
   const [billingProfile, setBillingProfile] = useState<BillingProfilePayload | null>(null)
   const [billingComplete, setBillingComplete] = useState(false)
   const [loading, setLoading] = useState(true)
   const [portalLoading, setPortalLoading] = useState(false)
+  const [refreshLoading, setRefreshLoading] = useState(false)
   const [error, setError] = useState("")
+
+  async function loadSubscription() {
+    const [subscriptionPayload, billingPayload] = await Promise.all([
+      apiFetch<StatusPayload>("/api/subscription/status"),
+      apiFetch<{ success: true } & BillingProfileResponse>("/api/billing-profile"),
+    ])
+
+    setStatus(subscriptionPayload)
+    setBillingProfile(billingPayload.profile)
+    setBillingComplete(billingPayload.isComplete)
+  }
 
   useEffect(() => {
     let active = true
 
-    Promise.all([
-      apiFetch<StatusPayload>("/api/subscription/status"),
-      apiFetch<{ success: true } & BillingProfileResponse>("/api/billing-profile"),
-    ])
-      .then(([subscriptionPayload, billingPayload]) => {
-        if (!active) return
-        setStatus(subscriptionPayload)
-        setBillingProfile(billingPayload.profile)
-        setBillingComplete(billingPayload.isComplete)
-      })
+    loadSubscription()
       .catch((subscriptionError) => {
         if (!active) return
         setError(
           subscriptionError instanceof Error
             ? subscriptionError.message
-            : isRo
-              ? "Nu am putut încărca abonamentul."
-              : "Unable to load subscription."
+            : t("subscription.refreshFailed")
         )
       })
       .finally(() => {
@@ -76,7 +77,26 @@ export function SubscriptionCard() {
     return () => {
       active = false
     }
-  }, [])
+  }, [t])
+
+  async function refreshSubscription() {
+    setError("")
+    setRefreshLoading(true)
+
+    try {
+      await apiFetch<{ success: true; synced: boolean }>("/api/stripe/sync-subscription", {
+        method: "POST",
+        body: JSON.stringify({}),
+      })
+      await loadSubscription()
+    } catch (refreshError) {
+      setError(
+        refreshError instanceof Error ? refreshError.message : t("subscription.refreshFailed")
+      )
+    } finally {
+      setRefreshLoading(false)
+    }
+  }
 
   async function openPortal() {
     setError("")
@@ -238,15 +258,29 @@ export function SubscriptionCard() {
               </p>
             )}
 
-            <button
-              type="button"
-              onClick={openPortal}
-              disabled={portalLoading || !status}
-              className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-            >
-              {portalLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isRo ? "Gestionează abonamentul" : "Manage subscription"}
-            </button>
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              {!status?.isPremium ? (
+                <button
+                  type="button"
+                  onClick={refreshSubscription}
+                  disabled={refreshLoading || loading}
+                  data-testid="subscription-refresh-status"
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#6D4BFF]/30 bg-[rgba(109,75,255,0.08)] px-5 py-3 text-sm font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {refreshLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {refreshLoading ? t("subscription.refreshingStatus") : t("subscription.refreshStatus")}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={openPortal}
+                disabled={portalLoading || !status}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {portalLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                {isRo ? "Gestionează abonamentul" : "Manage subscription"}
+              </button>
+            </div>
           </div>
         </div>
       </main>

@@ -122,8 +122,13 @@ export const messages: Record<Locale, MessageMap> = {
     "subscription.success.title": "Subscription started",
     "subscription.success.body":
       "We’re activating your access in a few moments.",
+    "subscription.success.syncing": "Syncing your subscription with Stripe...",
     "subscription.success.openChat": "Open chat",
     "subscription.success.viewPlan": "View plan",
+    "subscription.refreshStatus": "Refresh status",
+    "subscription.refreshingStatus": "Refreshing...",
+    "subscription.refreshFailed":
+      "We couldn't refresh your subscription. Try again or contact support if payment already succeeded.",
 
     "report.title": "Relationship Deep Report",
     "report.subtitle": "One-off unlock: 29 RON. Purchase once and generate one full report.",
@@ -607,8 +612,13 @@ export const messages: Record<Locale, MessageMap> = {
     "subscription.success.title": "Abonament activat",
     "subscription.success.body":
       "Îți activăm accesul în câteva momente.",
+    "subscription.success.syncing": "Sincronizăm abonamentul cu Stripe...",
     "subscription.success.openChat": "Deschide chatul",
     "subscription.success.viewPlan": "Vezi planul",
+    "subscription.refreshStatus": "Reîmprospătează statusul",
+    "subscription.refreshingStatus": "Se actualizează...",
+    "subscription.refreshFailed":
+      "Nu am putut actualiza abonamentul. Încearcă din nou sau contactează suportul dacă plata a reușit deja.",
 
     "report.title": "Raport Deep Relationship",
     "report.subtitle": "Deblocare unică: 29 RON. Cumpără o dată și generezi un raport complet.",

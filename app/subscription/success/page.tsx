@@ -1,25 +1,54 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Check, Sparkles } from "lucide-react"
+import { useSearchParams } from "next/navigation"
+import { Check, Loader2, Sparkles } from "lucide-react"
 
 import { AuthGuard } from "@/components/auth/auth-guard"
+import { apiFetch } from "@/lib/api/client"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 
 export default function SubscriptionSuccessPage() {
   const localizedPath = useLocalizedPath()
   const { t } = useTranslations()
+  const searchParams = useSearchParams()
+  const sessionId = searchParams.get("session_id")
+  const [syncing, setSyncing] = useState(Boolean(sessionId))
+
+  useEffect(() => {
+    if (!sessionId) return
+
+    let active = true
+
+    apiFetch<{ success: true; synced: boolean }>("/api/stripe/sync-subscription", {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+    })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setSyncing(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [sessionId])
 
   return (
     <AuthGuard>
       <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
         <div className="w-full max-w-md rounded-3xl border border-border bg-[#0D0820]/70 p-8 text-center shadow-xl shadow-[#6D4BFF]/10 backdrop-blur-xl">
           <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#6D4BFF]/15">
-            <Check className="h-7 w-7 text-cosmic-lavender" />
+            {syncing ? (
+              <Loader2 className="h-7 w-7 animate-spin text-cosmic-lavender" />
+            ) : (
+              <Check className="h-7 w-7 text-cosmic-lavender" />
+            )}
           </div>
           <h1 className="text-2xl font-bold text-foreground">{t("subscription.success.title")}</h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            {t("subscription.success.body")}
+            {syncing ? t("subscription.success.syncing") : t("subscription.success.body")}
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row">
             <Link
