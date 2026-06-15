@@ -95,7 +95,7 @@ const apiErrorMessages: Record<string, Record<Locale, string>> = {
   },
   daily_horoscope_failed: {
     en: "Unable to generate daily guidance.",
-    ro: "Nu am putut genera ghidajul zilnic.",
+    ro: "Nu am putut genera ghidul zilnic.",
   },
   compatibility_generation_failed: {
     en: "Unable to generate compatibility data.",

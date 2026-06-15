@@ -19,12 +19,16 @@ import {
 
 import { AgentAvatar } from "@/components/agents/agent-avatar"
 import { ChatErrorMessage } from "@/components/chat/chat-error-message"
+import { AgentHandoffGuidance } from "@/components/chat/agent-handoff-guidance"
+import { AgentHandoffTransitionBanner } from "@/components/chat/agent-handoff-transition-banner"
+import { ChatUsageLimitBanner } from "@/components/chat/chat-usage-limit-banner"
 import { AgentThinkingIndicator } from "@/components/chat/agent-thinking-indicator"
 import { ChatMessageCopyButton } from "@/components/chat/chat-message-copy-button"
 import { AuthGuard } from "@/components/auth/auth-guard"
 import { AppLogo } from "@/components/branding/app-logo"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
 import { Skeleton } from "@/components/ui/skeleton"
+import { SubscriptionUsageMeter } from "@/components/subscription/subscription-usage-meter"
 import { ApiClientError, apiFetch } from "@/lib/api/client"
 import { agentAvatarCatalog } from "@/lib/agents/avatar-catalog"
 import { asksForChartDetails, getChartAccountPath } from "@/lib/chat/chart-intent"
@@ -37,6 +41,11 @@ import {
   type ChatErrorCode,
 } from "@/lib/chat/errors"
 import { stripMarkdownFormatting } from "@/lib/chat/plain-text"
+import {
+  getUpgradeHref,
+  shouldShowLimitBanner,
+  shouldShowUsageUpsell,
+} from "@/lib/subscription/usage-display"
 import { getChatConversationPath, getNewChatPath } from "@/lib/chat/paths"
 import { logout } from "@/lib/firebase/auth"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
@@ -107,13 +116,27 @@ interface ConversationSummary {
   messageCount: number
 }
 
+const HANDOFF_TRANSITION_MS = 2500
+
+type HandoffTransition = {
+  fromAgent: AgentType
+  toAgent: AgentType
+  expiresAt: number
+}
+
+type SubscriptionUsage = {
+  isPremium: boolean
+  monthlyQuestionCount: number
+  monthlyQuestionLimit: number
+}
+
 function getAgentLabel(agentType: AgentType, isRo: boolean) {
   if (isRo) {
     const roMap: Record<AgentType, string> = {
       birth_chart: "Hartă natală",
       love: "Iubire",
       compatibility: "Compatibilitate",
-      daily_guidance: "Ghidaj zilnic",
+      daily_guidance: "Ghid zilnic",
       career_purpose: "Carieră",
       spiritual_reflection: "Spiritual",
     }
@@ -141,6 +164,10 @@ function getAgentSidebarLabel(agentType: AgentType, isRo: boolean) {
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === "AbortError"
+}
+
+function getHandoffCta(ctas?: MessageCta[]) {
+  return ctas?.find((cta) => cta.action === "switch_agent" && cta.targetAgent)
 }
 
 function ConversationsSkeletonList() {
@@ -213,15 +240,15 @@ export function ChatPageClient({
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [composerError, setComposerError] = useState("")
+  const [handoffTransition, setHandoffTransition] = useState<HandoffTransition | null>(null)
   const [isGeneratingDivineData, setIsGeneratingDivineData] = useState(false)
-  const [isPremium, setIsPremium] = useState(false)
+  const [subscriptionUsage, setSubscriptionUsage] = useState<SubscriptionUsage | null>(null)
   const [natalReady, setNatalReady] = useState<boolean | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
   const sendGenerationRef = useRef(0)
-  const skipNextLoadRef = useRef<string | null>(null)
 
   const activeConversationId = conversationIdFromUrl ?? draftConversationId
 
@@ -271,6 +298,19 @@ export function ChatPageClient({
   }, [sidebarExpanded])
 
   useEffect(() => {
+    if (!handoffTransition) return
+
+    const remaining = handoffTransition.expiresAt - Date.now()
+    if (remaining <= 0) {
+      setHandoffTransition(null)
+      return
+    }
+
+    const timer = window.setTimeout(() => setHandoffTransition(null), remaining)
+    return () => window.clearTimeout(timer)
+  }, [handoffTransition])
+
+  useEffect(() => {
     scrollToBottom()
   }, [messages, isAwaitingResponse, scrollToBottom])
 
@@ -307,7 +347,11 @@ export function ChatPageClient({
         setConversations(conversationPayload.conversations ?? [])
         setNextConversationsCursor(conversationPayload.nextCursor ?? null)
         if (subscriptionPayload) {
-          setIsPremium(Boolean(subscriptionPayload.isPremium))
+          setSubscriptionUsage({
+            isPremium: Boolean(subscriptionPayload.isPremium),
+            monthlyQuestionCount: subscriptionPayload.monthlyQuestionCount ?? 0,
+            monthlyQuestionLimit: subscriptionPayload.monthlyQuestionLimit ?? 5,
+          })
         }
       })
       .catch(() => {
@@ -338,10 +382,6 @@ export function ChatPageClient({
 
   useEffect(() => {
     if (!conversationIdFromUrl) return
-    if (skipNextLoadRef.current === conversationIdFromUrl) {
-      skipNextLoadRef.current = null
-      return
-    }
 
     let cancelled = false
     setLoadingMessages(true)
@@ -409,8 +449,16 @@ export function ChatPageClient({
   }
 
   function handleSwitchAgent(targetAgent: AgentType, prefillQuestion?: string) {
+    const fromAgent = activeAgent
     setActiveAgent(targetAgent)
     setAgentsAccordionOpen(true)
+    if (fromAgent !== targetAgent) {
+      setHandoffTransition({
+        fromAgent,
+        toAgent: targetAgent,
+        expiresAt: Date.now() + HANDOFF_TRANSITION_MS,
+      })
+    }
     if (prefillQuestion) {
       setInput(prefillQuestion)
     }
@@ -466,6 +514,7 @@ export function ChatPageClient({
     if (isAwaitingResponse) return
 
     setComposerError("")
+    setHandoffTransition(null)
 
     const requestAgent = retryRequest?.agentType ?? activeAgent
     const requestConversationId = retryRequest?.conversationId ?? activeConversationId
@@ -530,12 +579,14 @@ export function ChatPageClient({
         conversationId: string
         persisted?: boolean
         warning?: ChatApiError
+        remaining?: number
         data?: {
           answer?: string
           suggestedAgent?: AgentType | null
           agentHandoffReason?: string | null
           suggestedQuestion?: string | null
           partnerActionRequired?: boolean
+          remainingQuestions?: number
         }
       }>("/api/agents/chat", {
         method: "POST",
@@ -548,6 +599,17 @@ export function ChatPageClient({
       })
 
       if (generation !== sendGenerationRef.current) return
+
+      const remainingQuestions = payload.remaining ?? payload.data?.remainingQuestions
+      if (typeof remainingQuestions === "number") {
+        setSubscriptionUsage((prev) => {
+          if (!prev || prev.isPremium) return prev
+          return {
+            ...prev,
+            monthlyQuestionCount: Math.max(prev.monthlyQuestionLimit - remainingQuestions, 0),
+          }
+        })
+      }
 
       const handoffCtas = buildHandoffCtas(
         {
@@ -608,10 +670,8 @@ export function ChatPageClient({
 
       setMessages((prev) => prev.map((message) => (message.id === pendingId ? completedMsg : message)))
       setDraftConversationId(payload.conversationId)
-      if (!conversationIdFromUrl) {
-        skipNextLoadRef.current = payload.conversationId
-        router.replace(localizedPath(getChatConversationPath(payload.conversationId)))
-      }
+      // Stay on /chat after the first message — router.replace to /chat/c/[id] remounts
+      // ChatPageClient, reloads messages from the API, and drops client-only handoff CTAs.
       if (payload.persisted !== false) {
         await refreshConversations().catch(() => undefined)
       }
@@ -739,9 +799,66 @@ export function ChatPageClient({
   }
 
   function renderComposer() {
+    const transitionAccent = handoffTransition
+      ? agentAvatarCatalog[handoffTransition.toAgent].accentColor
+      : undefined
+    const showUsageUpsell =
+      subscriptionUsage && shouldShowUsageUpsell(subscriptionUsage.isPremium)
+    const showLimitBanner =
+      subscriptionUsage &&
+      shouldShowLimitBanner(
+        subscriptionUsage.monthlyQuestionCount,
+        subscriptionUsage.monthlyQuestionLimit,
+        subscriptionUsage.isPremium
+      )
+
     return (
       <div className="mx-auto flex w-full max-w-6xl flex-col">
-        <div className="flex items-end gap-3 rounded-2xl border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] px-4 py-3">
+        <AnimatePresence initial={false}>
+          {handoffTransition ? (
+            <motion.div
+              key="handoff-transition-banner"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="mb-2"
+            >
+              <AgentHandoffTransitionBanner
+                fromAgentType={handoffTransition.fromAgent}
+                toAgentType={handoffTransition.toAgent}
+                getAgentLabel={(agentType) => getAgentLabel(agentType, isRo)}
+              />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+        <AnimatePresence initial={false}>
+          {showLimitBanner ? (
+            <motion.div
+              key={`usage-limit-banner-${subscriptionUsage.monthlyQuestionCount}`}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+            >
+              <ChatUsageLimitBanner
+                used={subscriptionUsage.monthlyQuestionCount}
+                limit={subscriptionUsage.monthlyQuestionLimit}
+              />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+        <div
+          className="flex items-end gap-3 rounded-2xl border bg-[rgba(255,255,255,0.05)] px-4 py-3 transition-[border-color,box-shadow] duration-300"
+          style={
+            transitionAccent
+              ? {
+                  borderColor: `${transitionAccent}66`,
+                  boxShadow: `0 0 0 1px ${transitionAccent}40`,
+                }
+              : { borderColor: "rgba(255,255,255,0.12)" }
+          }
+        >
           <textarea
             ref={inputRef}
             data-testid="chat-input"
@@ -782,6 +899,13 @@ export function ChatPageClient({
             {composerError}
           </p>
         ) : null}
+        {showUsageUpsell ? (
+          <SubscriptionUsageMeter
+            used={subscriptionUsage.monthlyQuestionCount}
+            limit={subscriptionUsage.monthlyQuestionLimit}
+            variant="compact"
+          />
+        ) : null}
       </div>
     )
   }
@@ -803,6 +927,8 @@ export function ChatPageClient({
       </div>
     )
   }
+
+  const isPremium = Boolean(subscriptionUsage?.isPremium)
 
   const conversationLimitLabel = isPremium
     ? isRo
@@ -894,6 +1020,23 @@ export function ChatPageClient({
           </div>
 
           <p className="mb-2 text-[11px] text-muted-foreground">{conversationLimitLabel}</p>
+
+          {subscriptionUsage && shouldShowUsageUpsell(subscriptionUsage.isPremium) ? (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-1">
+              <p className="text-[11px] text-muted-foreground">
+                {t("chat.usage.questionsUsed")
+                  .replace("{used}", String(subscriptionUsage.monthlyQuestionCount))
+                  .replace("{limit}", String(subscriptionUsage.monthlyQuestionLimit))}
+              </p>
+              <Link
+                href={getUpgradeHref(localizedPath)}
+                data-testid="chat-sidebar-upgrade-cta"
+                className="rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-2 py-0.5 text-[10px] font-semibold text-foreground"
+              >
+                {t("chat.usage.upgradeCta")}
+              </Link>
+            </div>
+          ) : null}
 
           <div className="cosmic-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto">
             {loadingConversations ? (
@@ -1084,7 +1227,7 @@ export function ChatPageClient({
                       >
                         <p className="max-w-md text-center text-sm text-muted-foreground">
                           {isRo
-                            ? "Întreabă agentul ales despre hartă natală, iubire, carieră sau ghidaj zilnic."
+                            ? "Întreabă agentul ales despre hartă natală, iubire, carieră sau ghid zilnic."
                             : "Ask your selected agent about your birth chart, love, career, or daily guidance."}
                         </p>
                         <div className="mt-5">{renderSuggestedPrompts()}</div>
@@ -1143,6 +1286,23 @@ export function ChatPageClient({
                                     {paragraph}
                                   </p>
                                 ))}
+                                {(() => {
+                                  const handoffCta = getHandoffCta(msg.ctas)
+                                  if (!handoffCta?.targetAgent || !msg.handoffReason || !msg.agentType) {
+                                    return null
+                                  }
+
+                                  return (
+                                    <AgentHandoffGuidance
+                                      fromAgentType={msg.agentType}
+                                      toAgentType={handoffCta.targetAgent}
+                                      reason={msg.handoffReason}
+                                      suggestedQuestion={handoffCta.prefillQuestion}
+                                      getAgentLabel={(agentType) => getAgentLabel(agentType, isRo)}
+                                      onSwitch={handleSwitchAgent}
+                                    />
+                                  )
+                                })()}
                               </div>
                             )}
                             {msg.warningCode ? (
@@ -1156,45 +1316,6 @@ export function ChatPageClient({
                             ) : null}
                             {msg.ctas && msg.ctas.length > 0 && (
                               <div className="mt-3 space-y-3">
-                                {msg.ctas
-                                  .filter(
-                                    (cta) => cta.action === "switch_agent" && cta.targetAgent
-                                  )
-                                  .map((cta) => (
-                                    <div
-                                      key={`${msg.id}-${cta.action}-${cta.targetAgent}`}
-                                      className="flex flex-col items-start gap-2"
-                                    >
-                                      <button
-                                        type="button"
-                                        data-testid="chat-switch-agent-cta"
-                                        onClick={() =>
-                                          handleSwitchAgent(cta.targetAgent!, cta.prefillQuestion)
-                                        }
-                                        className={`inline-flex items-center gap-2.5 rounded-full px-4 py-2 text-xs font-semibold ${
-                                          cta.variant === "primary"
-                                            ? "bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] text-foreground"
-                                            : "border border-border bg-[rgba(255,255,255,0.04)] text-muted-foreground hover:text-foreground"
-                                        }`}
-                                      >
-                                        <AgentAvatar
-                                          agentType={cta.targetAgent!}
-                                          size="sm"
-                                          showRing={false}
-                                          priority={false}
-                                        />
-                                        <span>{cta.label}</span>
-                                      </button>
-                                      {msg.handoffReason && (
-                                        <p
-                                          data-testid="chat-handoff-reason"
-                                          className="max-w-md text-xs leading-relaxed text-muted-foreground"
-                                        >
-                                          {msg.handoffReason}
-                                        </p>
-                                      )}
-                                    </div>
-                                  ))}
                                 {msg.ctas.some(
                                   (cta) =>
                                     cta.action !== "switch_agent" ||

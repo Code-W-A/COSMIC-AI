@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Menu, X } from "lucide-react"
 import { AppLogo } from "@/components/branding/app-logo"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
+import { useLandingAuth } from "@/components/landing/landing-auth-context"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
 
 export function Navigation() {
@@ -13,6 +14,8 @@ export function Navigation() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { t } = useTranslations()
   const localizedPath = useLocalizedPath()
+  const landingAuth = useLandingAuth()
+  const isReady = landingAuth.phase === "ready"
   const homeHref = localizedPath("/")
   const navLinks = [
     { label: t("nav.agents"), href: `${homeHref}#agents` },
@@ -61,18 +64,39 @@ export function Navigation() {
 
         <div className="hidden items-center gap-3 md:flex">
           <LanguageSwitcher compact />
-          <Link
-            href={localizedPath("/login")}
-            className="px-3 py-2 text-sm font-medium text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
-          >
-            {t("nav.login")}
-          </Link>
-          <Link
-            href={localizedPath("/onboarding")}
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-2.5 text-sm font-medium text-[#F5F2FF] transition-all hover:shadow-lg hover:shadow-[#6D4BFF]/30"
-          >
-            {t("nav.start")}
-          </Link>
+          {isReady ? (
+            <>
+              <Link
+                href={localizedPath("/account")}
+                data-testid="nav-account"
+                className="px-3 py-2 text-sm font-medium text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
+              >
+                {t("nav.account")}
+              </Link>
+              <Link
+                href={localizedPath("/chat")}
+                data-testid="nav-chat"
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-2.5 text-sm font-medium text-[#F5F2FF] transition-all hover:shadow-lg hover:shadow-[#6D4BFF]/30"
+              >
+                {t("nav.chat")}
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href={localizedPath("/login")}
+                className="px-3 py-2 text-sm font-medium text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
+              >
+                {t("nav.login")}
+              </Link>
+              <Link
+                href={localizedPath("/onboarding")}
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-2.5 text-sm font-medium text-[#F5F2FF] transition-all hover:shadow-lg hover:shadow-[#6D4BFF]/30"
+              >
+                {t("nav.start")}
+              </Link>
+            </>
+          )}
         </div>
 
         <button
@@ -104,20 +128,43 @@ export function Navigation() {
                   {link.label}
                 </a>
               ))}
-              <Link
-                href={localizedPath("/login")}
-                onClick={() => setMobileOpen(false)}
-                className="text-sm text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
-              >
-                {t("nav.login")}
-              </Link>
-              <Link
-                href={localizedPath("/onboarding")}
-                onClick={() => setMobileOpen(false)}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-2.5 text-sm font-medium text-[#F5F2FF]"
-              >
-                {t("nav.start")}
-              </Link>
+              {isReady ? (
+                <>
+                  <Link
+                    href={localizedPath("/account")}
+                    data-testid="nav-account"
+                    onClick={() => setMobileOpen(false)}
+                    className="text-sm text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
+                  >
+                    {t("nav.account")}
+                  </Link>
+                  <Link
+                    href={localizedPath("/chat")}
+                    data-testid="nav-chat"
+                    onClick={() => setMobileOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-2.5 text-sm font-medium text-[#F5F2FF]"
+                  >
+                    {t("nav.chat")}
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href={localizedPath("/login")}
+                    onClick={() => setMobileOpen(false)}
+                    className="text-sm text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
+                  >
+                    {t("nav.login")}
+                  </Link>
+                  <Link
+                    href={localizedPath("/onboarding")}
+                    onClick={() => setMobileOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-2.5 text-sm font-medium text-[#F5F2FF]"
+                  >
+                    {t("nav.start")}
+                  </Link>
+                </>
+              )}
             </div>
           </motion.div>
         )}

@@ -49,7 +49,7 @@ export function ChatPreview() {
         { label: "Agent Love", icon: Heart },
         { label: "Birth Chart", icon: Compass },
         { label: "Compatibilitate", icon: Users },
-        { label: "Ghidaj zilnic", icon: Sun },
+        { label: "Ghid zilnic", icon: Sun },
         { label: "Carieră", icon: Briefcase },
         { label: "Spiritual", icon: Flame },
       ]

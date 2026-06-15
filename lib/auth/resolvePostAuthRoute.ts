@@ -6,10 +6,16 @@ import { logClientEvent } from "@/lib/logging/client-log"
 
 type LocalizedPathFn = (path: string) => string
 
-interface ProfileResponse {
+export interface ProfileRouteResponse {
   profile: unknown | null
   profileComplete?: boolean
   natalReady?: boolean
+}
+
+interface ProfileRouteState {
+  destination: string
+  response: ProfileRouteResponse | null
+  error: string | null
 }
 
 interface ResolvePostAuthRouteParams {
@@ -22,9 +28,26 @@ function isChatPath(path: string, localizedPath: LocalizedPathFn) {
   return path === chatPath || path.endsWith("/chat")
 }
 
-async function fetchProfileRouteState(localizedPath: LocalizedPathFn) {
+export function getLandingRedirectPath(
+  response: ProfileRouteResponse | null,
+  localizedPath: LocalizedPathFn
+): string | null {
+  if (!response || response.profileComplete !== true) {
+    return localizedPath("/onboarding")
+  }
+
+  if (response.natalReady !== true) {
+    return localizedPath("/onboarding?phase=divine")
+  }
+
+  return null
+}
+
+export async function getProfileRouteState(
+  localizedPath: LocalizedPathFn
+): Promise<ProfileRouteState> {
   try {
-    const response = await apiFetch<ProfileResponse>("/api/user/profile", {
+    const response = await apiFetch<ProfileRouteResponse>("/api/user/profile", {
       method: "GET",
     })
 
@@ -65,7 +88,7 @@ export async function resolvePostAuthRoute({
   const uid = getFirebaseAuth().currentUser?.uid ?? null
   const email = getFirebaseAuth().currentUser?.email ?? null
   const { destination: profileDestination, response, error } =
-    await fetchProfileRouteState(localizedPath)
+    await getProfileRouteState(localizedPath)
 
   if (response?.profileComplete !== true) {
     logClientEvent("auth.route", "post_auth_route_incomplete_profile", {

@@ -19,6 +19,7 @@ export const agentResponseJsonSchema = {
     },
     cards: {
       type: "array",
+      maxItems: 2,
       items: {
         type: "object",
         additionalProperties: false,
@@ -64,6 +65,7 @@ export const agentResponseJsonSchema = {
     },
     followUpQuestions: {
       type: "array",
+      maxItems: 2,
       items: {
         type: "string",
       },

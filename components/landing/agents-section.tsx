@@ -107,7 +107,7 @@ const roAgentCopy: Record<
     askLabel: "Întreabă acest agent",
   },
   daily_guidance: {
-    title: "Agent Ghidaj Zilnic",
+    title: "Agent Ghid Zilnic",
     description:
       "Primești mesajul cosmic al zilei, cu reflecții, afirmații și direcție practică.",
     example: "Pe ce ar trebui să mă concentrez astăzi?",

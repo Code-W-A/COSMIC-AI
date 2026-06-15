@@ -14,6 +14,7 @@ import {
   Send,
 } from "lucide-react"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
+import { useLandingAuth } from "@/components/landing/landing-auth-context"
 
 /* ─── Stars canvas ─── */
 function StarField() {
@@ -184,7 +185,10 @@ const baseFloatingCards = [
 /* ─── Main Hero ─── */
 export function HeroSection() {
   const localizedPath = useLocalizedPath()
-  const { locale } = useTranslations()
+  const { locale, t } = useTranslations()
+  const landingAuth = useLandingAuth()
+  const isReady = landingAuth.phase === "ready"
+  const showPricing = isReady && !landingAuth.isPremium
   const isRo = locale === "ro"
   const chatMessages = isRo
     ? [
@@ -335,13 +339,18 @@ export function HeroSection() {
             className="mt-10 flex flex-wrap items-center justify-center gap-4"
           >
             <a
-              href={localizedPath("/onboarding")}
+              href={isReady ? localizedPath("/chat") : localizedPath("/onboarding")}
+              data-testid="landing-cta-primary"
               className="group relative inline-flex items-center gap-2.5 overflow-hidden rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-8 py-3.5 text-sm font-semibold text-foreground shadow-lg shadow-[#6D4BFF]/25 transition-all duration-300 hover:shadow-xl hover:shadow-[#6D4BFF]/40 hover:brightness-110"
             >
               {/* shimmer sweep */}
               <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/[0.12] to-transparent transition-transform duration-700 group-hover:translate-x-full" />
               <Star className="h-4 w-4" />
-              {isRo ? "Începe gratuit" : "Start Free Reading"}
+              {isReady
+                ? t("landing.cta.continueChat")
+                : isRo
+                  ? "Începe gratuit"
+                  : "Start Free Reading"}
               <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" />
             </a>
             <a
@@ -350,6 +359,15 @@ export function HeroSection() {
             >
               {isRo ? "Descoperă agenții" : "Meet the Agents"}
             </a>
+            {showPricing ? (
+              <a
+                href={localizedPath("/pricing")}
+                data-testid="landing-cta-view-plans"
+                className="inline-flex items-center gap-2.5 rounded-full border border-[#6D4BFF]/30 bg-[rgba(109,75,255,0.08)] px-8 py-3.5 text-sm font-semibold text-foreground backdrop-blur-sm transition-all duration-300 hover:border-[#6D4BFF]/50 hover:bg-[rgba(109,75,255,0.14)]"
+              >
+                {t("landing.cta.viewPlans")}
+              </a>
+            ) : null}
           </motion.div>
         </div>
 

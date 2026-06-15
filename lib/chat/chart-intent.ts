@@ -6,7 +6,7 @@ const chartPhrasePattern =
 const chartKeywordPattern = /\b(chart|natal|horoscope|hart[aă]|horoscop)\b/i
 
 const dailyChartViewPattern =
-  /\b(show|view|see|open|full|complete|detailed|vizualiz(?:a|eaza|ează)|arat[aă]|vezi).*(daily|today|horoscope|ghidaj|azi|zilei)\b|\b(daily guidance|ghidaj zilnic|horoscopul zilei|ghidajul zilnic)\b/i
+  /\b(show|view|see|open|full|complete|detailed|vizualiz(?:a|eaza|ează)|arat[aă]|vezi).*(daily|today|horoscope|ghid|ghidaj|azi|zilei)\b|\b(daily guidance|ghid zilnic|horoscopul zilei|ghidul zilnic|ghidaj zilnic|ghidajul zilnic)\b/i
 
 export function asksForChartDetails(message: string, agentType: AgentType) {
   const trimmed = message.trim()

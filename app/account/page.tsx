@@ -21,6 +21,7 @@ import {
   AccountProfileFormSkeleton,
 } from "@/components/account/account-skeletons"
 import { AuthGuard } from "@/components/auth/auth-guard"
+import { SubscriptionUsageMeter } from "@/components/subscription/subscription-usage-meter"
 import { BirthPlaceAutocomplete } from "@/components/location/birth-place-autocomplete"
 import { BirthDateFields, BirthTimeFields } from "@/components/profile/birth-datetime-fields"
 import { apiFetch } from "@/lib/api/client"
@@ -830,6 +831,14 @@ function AccountPageContent() {
                   )}
                 </article>
               </div>
+
+              {subscriptionStatus && !subscriptionStatus.isPremium ? (
+                <SubscriptionUsageMeter
+                  used={subscriptionStatus.monthlyQuestionCount}
+                  limit={subscriptionStatus.monthlyQuestionLimit}
+                  variant="card"
+                />
+              ) : null}
 
               <article className="rounded-2xl border border-white/10 bg-black/25 p-4">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.hero.lastReading")}</p>

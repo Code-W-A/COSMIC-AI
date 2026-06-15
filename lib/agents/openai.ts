@@ -3,6 +3,7 @@ import "server-only"
 import OpenAI from "openai"
 
 import { cosmicAiSystemPrompt, getAgentInstruction, getAvailableAgentsCatalog } from "@/lib/agents/prompts"
+import { resolveResponseLength, resolveMockAnswerLength, type ResponseLengthProfile } from "@/lib/agents/response-length"
 import { agentResponseJsonSchema, validateAgentResponse } from "@/lib/agents/response-format"
 import type { AgentContext, AgentStructuredResponse } from "@/lib/agents/types"
 
@@ -37,6 +38,11 @@ function useE2EMocks() {
 }
 
 function safeContextForPrompt(context: AgentContext) {
+  const responseLength = resolveResponseLength({
+    agentType: context.agentType,
+    message: context.message,
+  })
+
   return {
     locale: context.locale,
     agentType: context.agentType,
@@ -46,6 +52,7 @@ function safeContextForPrompt(context: AgentContext) {
     inputCompleteness: context.inputCompleteness,
     agentInstruction: getAgentInstruction(context.agentType),
     availableAgents: getAvailableAgentsCatalog(),
+    responseLength,
     natalSummary: context.natal?.summary,
     dailyHoroscope: context.daily
       ? {
@@ -70,28 +77,74 @@ function safeContextForPrompt(context: AgentContext) {
 
 export async function generateAgentResponse(
   context: AgentContext
-): Promise<{ response: AgentStructuredResponse; model: string; tokensUsed?: number }> {
+): Promise<{
+  response: AgentStructuredResponse
+  model: string
+  tokensUsed?: number
+  responseLengthTier: ResponseLengthProfile["tier"]
+}> {
   if (useE2EMocks()) {
     const suggestsCareerHandoff =
       context.agentType === "love" &&
       /\b(work|career|job|vocat|carier|profes)/i.test(context.message)
 
+    const isRo = context.locale === "ro"
+    const lengthTier = resolveMockAnswerLength({
+      agentType: context.agentType,
+      message: context.message,
+    })
+    const briefAnswer = isRo
+      ? `Mocked pe scurt (${context.agentType}): mesajul tău e clar.`
+      : `Mocked brief ${context.agentType} answer: your message is clear.`
+    const standardAnswer = isRo
+      ? `Mocked ${context.agentType} answer for: ${context.message}`
+      : `Mocked ${context.agentType} answer for: ${context.message}`
+    const deepAnswer = isRo
+      ? `Mocked analiză detaliată de la ${context.agentType} pentru: ${context.message}. Pot explora simboluri, context și pași practici fără a repeta aceeași structură de fiecare dată.`
+      : `Mocked detailed ${context.agentType} analysis for: ${context.message}. I can explore symbolism, context, and practical next steps without repeating the same structure every time.`
+
+    const baseAnswer =
+      lengthTier === "brief" ? briefAnswer : lengthTier === "deep" ? deepAnswer : standardAnswer
+
+    const handoffAnswerSuffix = suggestsCareerHandoff
+      ? isRo
+        ? " Pentru direcție de carieră, colega mea Nova poate merge mai adânc pe vocație și sensul profesional."
+        : " For career direction, my colleague Nova can go deeper on vocation and professional purpose."
+      : ""
+
+    const mockCards =
+      lengthTier === "brief"
+        ? []
+        : [
+            {
+              type: "reflection" as const,
+              title: "E2E Insight",
+              value: null,
+              description: `Agent ${context.agentType} responded in ${context.locale}.`,
+              items: [],
+            },
+          ]
+
+    const mockFollowUps =
+      lengthTier === "deep"
+        ? ["What would you like to explore next?", "Should we go deeper on one placement?"]
+        : lengthTier === "standard"
+          ? ["What would you like to explore next?"]
+          : []
+
     return {
       model: "mock-e2e-model",
       tokensUsed: 42,
+      responseLengthTier: lengthTier,
       response: {
-        answer: `Mocked ${context.agentType} answer for: ${context.message}`,
-        cards: [
-          {
-            type: "reflection",
-            title: "E2E Insight",
-            description: `Agent ${context.agentType} responded in ${context.locale}.`,
-          },
-        ],
-        followUpQuestions: ["What would you like to explore next?"],
+        answer: `${baseAnswer}${handoffAnswerSuffix}`,
+        cards: mockCards,
+        followUpQuestions: mockFollowUps,
         suggestedAgent: suggestsCareerHandoff ? "career_purpose" : null,
         agentHandoffReason: suggestsCareerHandoff
-          ? "Career and purpose questions are Nova's specialty."
+          ? isRo
+            ? "Nova lucrează zilnic cu vocație, talente și direcție profesională — poate răspunde mai nuanțat la întrebarea ta."
+            : "Nova works with vocation, talents, and professional direction every day — she can answer your question with more nuance."
           : null,
         suggestedQuestion: suggestsCareerHandoff
           ? "What career path fits my natal chart?"
@@ -100,14 +153,19 @@ export async function generateAgentResponse(
     }
   }
 
+  const responseLength = resolveResponseLength({
+    agentType: context.agentType,
+    message: context.message,
+  })
+
   const model = getOpenAIModel()
   const result = await getOpenAI().responses.create({
     model,
     instructions: cosmicAiSystemPrompt,
     input: JSON.stringify(safeContextForPrompt(context)),
-    max_output_tokens: 1400,
+    max_output_tokens: responseLength.maxOutputTokens,
     text: {
-      verbosity: "medium",
+      verbosity: responseLength.verbosity,
       format: {
         type: "json_schema",
         name: "cosmic_ai_agent_response",
@@ -118,6 +176,7 @@ export async function generateAgentResponse(
     metadata: {
       scope: "cosmic_ai_agent_chat",
       agentType: context.agentType,
+      responseLengthTier: responseLength.tier,
     },
   })
   const rawText = result.output_text
@@ -130,5 +189,6 @@ export async function generateAgentResponse(
     response: validateAgentResponse(JSON.parse(rawText)),
     model,
     tokensUsed: result.usage?.total_tokens,
+    responseLengthTier: responseLength.tier,
   }
 }

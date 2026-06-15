@@ -62,7 +62,7 @@ test.describe("Chat", () => {
       "data-chat-state",
       "active"
     )
-    await expect(page).toHaveURL(/\/en\/chat\/c\//)
+    await expect(page).toHaveURL(/\/en\/chat\/?$/)
   })
 
   test("CHAT-03 suggested prompt trimite mesaj fara input manual", async ({ page }) => {
@@ -280,12 +280,77 @@ test.describe("Chat", () => {
     await page.getByTestId("chat-send-button").click()
 
     await expect(page.getByTestId("chat-message-assistant").last()).toContainText("Mocked")
+    await expect(page.getByTestId("chat-handoff-guidance")).toBeVisible()
+    await expect(page.getByTestId("chat-handoff-reason")).toContainText("Nova")
     const handoffCta = page.getByTestId("chat-switch-agent-cta")
     await expect(handoffCta).toBeVisible()
     await expect(handoffCta).toContainText("Nova")
 
     await handoffCta.click()
+    const transitionBanner = page.getByTestId("chat-handoff-transition-banner")
+    await expect(transitionBanner).toBeVisible()
+    await expect(transitionBanner).toContainText("Nova")
+    await expect(transitionBanner).toContainText("Career")
     await expect(page.getByTestId("chat-input")).toHaveValue("What career path fits my natal chart?")
     await expect(page.getByTestId("chat-input")).toBeFocused()
+  })
+
+  test("USAGE-UI-01 contor utilizare free in composer", async ({ page }) => {
+    await page.route("**/api/subscription/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          subscriptionStatus: "free",
+          subscriptionPlan: "free",
+          billingInterval: null,
+          currentPeriodEnd: null,
+          cancelAtPeriodEnd: false,
+          isInGrace: false,
+          graceUntil: null,
+          graceReason: null,
+          monthlyQuestionCount: 3,
+          monthlyQuestionLimit: 5,
+          isPremium: false,
+        }),
+      })
+    })
+
+    await page.reload()
+    await expect(page.getByTestId("chat-page")).toBeVisible()
+    const usageMeter = page.getByTestId("subscription-usage-meter")
+    await expect(usageMeter).toBeVisible()
+    await expect(usageMeter).toContainText("3")
+    await expect(usageMeter).toContainText("5")
+    await expect(page.getByTestId("subscription-usage-upgrade-cta")).toBeVisible()
+  })
+
+  test("USAGE-UI-02 banner progresiv la 4 din 5", async ({ page }) => {
+    await page.route("**/api/subscription/status", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          subscriptionStatus: "free",
+          subscriptionPlan: "free",
+          billingInterval: null,
+          currentPeriodEnd: null,
+          cancelAtPeriodEnd: false,
+          isInGrace: false,
+          graceUntil: null,
+          graceReason: null,
+          monthlyQuestionCount: 4,
+          monthlyQuestionLimit: 5,
+          isPremium: false,
+        }),
+      })
+    })
+
+    await page.reload()
+    await expect(page.getByTestId("chat-page")).toBeVisible()
+    await expect(page.getByTestId("chat-usage-limit-banner")).toBeVisible()
+    await expect(page.getByTestId("chat-usage-limit-banner")).toContainText(/1 free question|1 întrebare gratuită/)
   })
 })

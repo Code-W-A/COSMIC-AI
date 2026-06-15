@@ -10,11 +10,11 @@ import { FAQSection } from "@/components/landing/faq-section"
 import { FinalCTA } from "@/components/landing/final-cta"
 import { Footer } from "@/components/landing/footer"
 import { LandingAnalytics } from "@/components/landing/landing-analytics"
-import { LandingAuthRedirect } from "@/components/landing/landing-auth-redirect"
+import { LandingAuthProvider } from "@/components/landing/landing-auth-context"
 
 export default function Page() {
   return (
-    <LandingAuthRedirect>
+    <LandingAuthProvider>
       <LandingAnalytics />
       <main className="relative min-h-screen overflow-hidden bg-background">
         <Navigation />
@@ -29,6 +29,6 @@ export default function Page() {
         <FinalCTA />
         <Footer />
       </main>
-    </LandingAuthRedirect>
+    </LandingAuthProvider>
   )
 }

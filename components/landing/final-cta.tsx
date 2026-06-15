@@ -3,10 +3,14 @@
 import { motion } from "framer-motion"
 import { ArrowRight, Sparkles } from "lucide-react"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
+import { useLandingAuth } from "@/components/landing/landing-auth-context"
 
 export function FinalCTA() {
   const localizedPath = useLocalizedPath()
-  const { locale } = useTranslations()
+  const { locale, t } = useTranslations()
+  const landingAuth = useLandingAuth()
+  const isReady = landingAuth.phase === "ready"
+  const showPricing = isReady && !landingAuth.isPremium
   const isRo = locale === "ro"
 
   return (
@@ -40,14 +44,26 @@ export function FinalCTA() {
                 : "Discover a more personal way to explore love, purpose, compatibility, and self-understanding."}
             </p>
 
-            <div className="mt-10">
+            <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
               <a
-                href={localizedPath("/onboarding")}
+                href={isReady ? localizedPath("/chat") : localizedPath("/onboarding")}
                 className="group inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-10 py-4 text-base font-semibold text-[#F5F2FF] transition-all hover:shadow-xl hover:shadow-[#6D4BFF]/30"
               >
-                {isRo ? "Începe gratuit" : "Start Free Reading"}
+                {isReady
+                  ? t("landing.cta.continueChat")
+                  : isRo
+                    ? "Începe gratuit"
+                    : "Start Free Reading"}
                 <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
               </a>
+              {showPricing ? (
+                <a
+                  href={localizedPath("/pricing")}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#6D4BFF]/30 bg-[rgba(109,75,255,0.08)] px-10 py-4 text-base font-semibold text-[#F5F2FF] transition-all hover:border-[#6D4BFF]/50 hover:bg-[rgba(109,75,255,0.14)]"
+                >
+                  {t("landing.cta.viewPlans")}
+                </a>
+              ) : null}
             </div>
           </div>
         </motion.div>

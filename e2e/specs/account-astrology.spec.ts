@@ -18,11 +18,11 @@ test.describe("Account - generare astrologie (mock)", () => {
     await expect(page.getByTestId("account-feedback-success")).toBeVisible()
   })
 
-  test("DAILY-RO-01 ghidaj zilnic localizat pe ro", async ({ page, localized }) => {
+  test("DAILY-RO-01 ghid zilnic localizat pe ro", async ({ page, localized }) => {
     await page.goto(localized("/account?tab=daily_guidance", "ro"))
+    await expect(page.getByRole("heading", { name: "Ghid zilnic" })).toBeVisible()
     await expect(page.getByTestId("account-daily-generate-button")).toBeEnabled()
     await page.getByTestId("account-daily-generate-button").click()
-    await expect(page.getByTestId("account-feedback-success")).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText(/Ghidaj zilnic mock|\[RO\]/)).toBeVisible()
+    await expect(page.getByText(/Ghid zilnic mock:/)).toBeVisible({ timeout: 30_000 })
   })
 })

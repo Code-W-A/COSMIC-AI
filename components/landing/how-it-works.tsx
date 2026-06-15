@@ -45,7 +45,7 @@ export function HowItWorks() {
           icon: Bot,
           title: "Alegi agentul AI potrivit",
           description:
-            "Selectezi dintre șase agenți specializați: iubire, carieră, compatibilitate, ghidaj zilnic și alții.",
+            "Selectezi dintre șase agenți specializați: iubire, carieră, compatibilitate, ghid zilnic și alții.",
         },
         {
           number: "03",

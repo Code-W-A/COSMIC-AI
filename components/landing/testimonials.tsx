@@ -56,7 +56,7 @@ export function Testimonials() {
         },
         {
           quote:
-            "Agentul de ghidaj zilnic a devenit parte din rutina mea de dimineață. Mesajele zilnice rezonează real cu starea mea.",
+            "Agentul de ghid zilnic a devenit parte din rutina mea de dimineață. Mesajele zilnice rezonează real cu starea mea.",
           name: "Sofia R.",
           role: "Balanță Soare, Rac Lună",
           stars: 5,

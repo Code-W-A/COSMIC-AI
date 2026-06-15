@@ -140,7 +140,7 @@ function getFocusOptions(isRo: boolean) {
     { value: "career", label: isRo ? "Carieră" : "Career", icon: Briefcase, color: "#4BC8FF" },
     {
       value: "daily_guidance",
-      label: isRo ? "Ghidaj zilnic" : "Daily Guidance",
+      label: isRo ? "Ghid zilnic" : "Daily Guidance",
       icon: Sun,
       color: "#FFB86D",
     },

@@ -424,7 +424,7 @@ export async function getLocalizedDailyHoroscope(
     const mockSegments = Object.fromEntries(
       Object.entries(sourceSegments).map(([key, value]) => [
         key,
-        key === "daily.horoscopeData" ? `Ghidaj zilnic mock: ${value}` : `[RO] ${value}`,
+        key === "daily.horoscopeData" ? `Ghid zilnic mock: ${value}` : `[RO] ${value}`,
       ])
     )
     return applyLocalizedSegmentsToDaily(daily, mockSegments)

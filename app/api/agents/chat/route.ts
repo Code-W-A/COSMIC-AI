@@ -313,6 +313,12 @@ export async function POST(request: Request) {
         aiResponse = generated.response
         model = generated.model
         tokensUsed = generated.tokensUsed
+        await logInfo("usage", "agent_response_length", {
+          uid: user.uid,
+          agentType,
+          responseLengthTier: generated.responseLengthTier,
+          tokensUsed: generated.tokensUsed ?? null,
+        })
       } catch (error) {
         await logError("chat.openai", "agent_response_generation_failed", {
           uid: user.uid,
