@@ -149,6 +149,22 @@ const apiErrorMessages: Record<string, Record<Locale, string>> = {
     en: "Unable to delete your account right now.",
     ro: "Nu am putut șterge contul acum.",
   },
+  invalid_contact_request: {
+    en: "Provide a valid topic and message.",
+    ro: "Trimite un subiect și un mesaj valide.",
+  },
+  contact_rate_limited: {
+    en: "Too many support messages. Please try again later.",
+    ro: "Prea multe mesaje trimise. Încearcă din nou mai târziu.",
+  },
+  contact_send_failed: {
+    en: "Unable to send your message right now. Please try again later.",
+    ro: "Nu am putut trimite mesajul acum. Încearcă din nou mai târziu.",
+  },
+  contact_not_configured: {
+    en: "Support email is not configured on the server.",
+    ro: "Emailul de suport nu este configurat pe server.",
+  },
 }
 
 export function localizeApiErrorMessage(code: string, locale: Locale, fallback?: string) {

@@ -8,6 +8,7 @@ import {
 } from "@/lib/agents/context"
 import { isAuthResponse, requireUser } from "@/lib/auth/requireUser"
 import { DivineApiHttpError } from "@/lib/divineapi/client"
+import { toNatalRevealPayload } from "@/lib/divineapi/natal-overview"
 import { getCosmicProfile, getCosmicProfileRef, getDailyGuidanceRef } from "@/lib/firebase/firestore"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
 import { logError, logInfo } from "@/lib/logging/logger"
@@ -33,11 +34,14 @@ export async function POST(request: Request) {
   if (isAuthResponse(user)) return user
 
   let source: string | null = null
+  let force = false
   try {
-    const body = (await request.json()) as { source?: unknown }
+    const body = (await request.json()) as { source?: unknown; force?: unknown }
     source = typeof body?.source === "string" ? body.source : null
+    force = body?.force === true
   } catch {
     source = null
+    force = false
   }
 
   try {
@@ -80,21 +84,24 @@ export async function POST(request: Request) {
       const dailyRef = getDailyGuidanceRef(user.uid, dateKey)
       const dailySnapshot = await dailyRef.get()
       const sign = getProfileSunSign(profileWithLocation) || "Gemini"
+      const mockSummary = {
+        sunSign: sign,
+        moonSign: "Virgo",
+        risingSign: "Libra",
+        planets: [{ name: "Sun", sign, house: "10", degree: "12.5°" }],
+        houses: [{ house: "1", sign: "Libra" }],
+        aspects: [{ aspect: "Trine", between: "Sun-Moon" }],
+        chartImageSvg:
+          "<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><rect width='320' height='320' fill='#100a23'/><circle cx='160' cy='160' r='120' stroke='#8B5CFF' stroke-width='2' fill='none'/><text x='160' y='170' text-anchor='middle' fill='#F5F2FF' font-size='20'>E2E Chart</text></svg>",
+      }
 
       await profileRef.set(
         {
           divineNatalRaw: { mocked: true, source: "e2e" },
-          natalSummary: {
-            sunSign: sign,
-            moonSign: "Virgo",
-            risingSign: "Libra",
-            planets: [{ name: "Sun", sign, house: "10" }],
-            houses: [{ house: "1", sign: "Libra" }],
-            aspects: [{ aspect: "Trine", between: "Sun-Moon" }],
-          },
-          sunSign: sign,
-          moonSign: "Virgo",
-          risingSign: "Libra",
+          natalSummary: mockSummary,
+          sunSign: mockSummary.sunSign,
+          moonSign: mockSummary.moonSign,
+          risingSign: mockSummary.risingSign,
           natalChartGeneratedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -119,15 +126,19 @@ export async function POST(request: Request) {
         { merge: true }
       )
 
+      const generated = {
+        natal: force || !hadNatal,
+        daily: force || !dailySnapshot.exists,
+      }
+      const cached = {
+        natal: hadNatal && !force,
+        daily: dailySnapshot.exists && !force,
+      }
+
       return successResponse({
-        generated: {
-          natal: !hadNatal,
-          daily: !dailySnapshot.exists,
-        },
-        cached: {
-          natal: hadNatal,
-          daily: dailySnapshot.exists,
-        },
+        generated,
+        cached,
+        natal: toNatalRevealPayload(mockSummary),
         compatibilitySupported: false,
         compatibilityReason:
           "Compatibility generation requires partner birth details and is not included in generate-all.",
@@ -137,6 +148,7 @@ export async function POST(request: Request) {
     await logInfo("divineapi", "divine.generate_all_started", {
       uid: user.uid,
       source: source ?? "unknown",
+      force,
       hasCoordinates:
         typeof profileWithLocation.latitude === "number" &&
         typeof profileWithLocation.longitude === "number",
@@ -144,7 +156,7 @@ export async function POST(request: Request) {
     })
 
     const hadNatal = Boolean((profile as { natalSummary?: unknown }).natalSummary)
-    const natal = await ensureNatalChart(user.uid, profileWithLocation, locale)
+    const natal = await ensureNatalChart(user.uid, profileWithLocation, locale, { force })
     const sign = natal.summary.sunSign ?? getProfileSunSign(profileWithLocation)
 
     if (!sign) {
@@ -159,16 +171,17 @@ export async function POST(request: Request) {
       user.uid,
       sign,
       profileWithLocation,
-      locale
+      locale,
+      { force }
     )
 
     const generated = {
-      natal: !hadNatal,
-      daily: !cacheHit,
+      natal: force || !hadNatal,
+      daily: force || !cacheHit,
     }
     const cached = {
-      natal: hadNatal,
-      daily: cacheHit,
+      natal: hadNatal && !force,
+      daily: cacheHit && !force,
     }
 
     await logInfo("divineapi", "divine.generate_all_completed", {
@@ -176,11 +189,13 @@ export async function POST(request: Request) {
       generated,
       cached,
       source: source ?? "unknown",
+      force,
     })
 
     return successResponse({
       generated,
       cached,
+      natal: toNatalRevealPayload(natal.summary as unknown as Record<string, unknown>),
       compatibilitySupported: false,
       compatibilityReason:
         "Compatibility generation requires partner birth details and is not included in generate-all.",

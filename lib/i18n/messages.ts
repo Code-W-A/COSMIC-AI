@@ -263,6 +263,7 @@ export const messages: Record<Locale, MessageMap> = {
     "account.tabs.dailyGuidance": "Daily Guidance",
     "account.tabs.compatibility": "Compatibility",
     "account.tabs.billing": "Billing",
+    "account.tabs.contact": "Contact",
     "account.tabs.accountSettings": "Account settings",
     "account.delete.title": "Delete account",
     "account.delete.subtitle":
@@ -293,6 +294,30 @@ export const messages: Record<Locale, MessageMap> = {
     "account.delete.error.emailMismatch": "Confirmation email does not match your account.",
     "account.delete.error.activeSubscription": "Cancel your active subscription before deleting your account.",
     "account.delete.error.reauthRequired": "Please sign in again before deleting your account.",
+    "account.contact.title": "Contact support",
+    "account.contact.subtitle":
+      "Tell us what you need help with and we will reply to your account email.",
+    "account.contact.topicLabel": "What would you like to discuss?",
+    "account.contact.messageLabel": "Your message",
+    "account.contact.messagePlaceholder":
+      "Describe your question or issue in as much detail as you can...",
+    "account.contact.replyToHint": "We will reply to {email}",
+    "account.contact.submit": "Send message",
+    "account.contact.submitting": "Sending...",
+    "account.contact.success": "Message sent",
+    "account.contact.successHint": "Thank you. Our team will get back to you by email soon.",
+    "account.contact.sendAnother": "Send another message",
+    "account.contact.messageTooShort": "Please write at least 10 characters.",
+    "account.contact.topics.billing.label": "Billing & subscription",
+    "account.contact.topics.billing.description": "Payments, invoices, Premium, or plan changes",
+    "account.contact.topics.technical.label": "Technical issue",
+    "account.contact.topics.technical.description": "Bugs, login problems, or something not working",
+    "account.contact.topics.profile.label": "Cosmic profile / readings",
+    "account.contact.topics.profile.description": "Birth data, charts, daily guidance, or analyses",
+    "account.contact.topics.feedback.label": "Feedback & suggestions",
+    "account.contact.topics.feedback.description": "Ideas to improve AstroAI or your experience",
+    "account.contact.topics.other.label": "Other",
+    "account.contact.topics.other.description": "Anything else you want to ask our team",
     "account.hero.welcomeEyebrow": "Cosmic account",
     "account.hero.welcomeTitle": "Welcome back,",
     "account.hero.welcomeSubtitle":
@@ -753,6 +778,7 @@ export const messages: Record<Locale, MessageMap> = {
     "account.tabs.dailyGuidance": "Ghid zilnic",
     "account.tabs.compatibility": "Compatibilitate",
     "account.tabs.billing": "Facturare",
+    "account.tabs.contact": "Contact",
     "account.tabs.accountSettings": "Setări cont",
     "account.delete.title": "Ștergere cont",
     "account.delete.subtitle":
@@ -785,6 +811,35 @@ export const messages: Record<Locale, MessageMap> = {
       "Anulează abonamentul activ înainte de a șterge contul.",
     "account.delete.error.reauthRequired":
       "Te rugăm să te autentifici din nou înainte de a șterge contul.",
+    "account.contact.title": "Contact suport",
+    "account.contact.subtitle":
+      "Spune-ne cu ce ai nevoie de ajutor și îți vom răspunde pe emailul contului tău.",
+    "account.contact.topicLabel": "Despre ce vrei să discutăm?",
+    "account.contact.messageLabel": "Mesajul tău",
+    "account.contact.messagePlaceholder":
+      "Descrie întrebarea sau problema cât mai detaliat...",
+    "account.contact.replyToHint": "Îți vom răspunde la {email}",
+    "account.contact.submit": "Trimite mesajul",
+    "account.contact.submitting": "Se trimite...",
+    "account.contact.success": "Mesaj trimis",
+    "account.contact.successHint":
+      "Mulțumim. Echipa noastră îți va răspunde pe email în curând.",
+    "account.contact.sendAnother": "Trimite alt mesaj",
+    "account.contact.messageTooShort": "Scrie cel puțin 10 caractere.",
+    "account.contact.topics.billing.label": "Facturare & abonament",
+    "account.contact.topics.billing.description":
+      "Plăți, facturi, Premium sau schimbări de plan",
+    "account.contact.topics.technical.label": "Problemă tehnică",
+    "account.contact.topics.technical.description":
+      "Bug-uri, probleme de login sau ceva ce nu funcționează",
+    "account.contact.topics.profile.label": "Profil cosmic / analize",
+    "account.contact.topics.profile.description":
+      "Date de naștere, hărți, ghid zilnic sau analize",
+    "account.contact.topics.feedback.label": "Feedback & sugestii",
+    "account.contact.topics.feedback.description":
+      "Idei pentru a îmbunătăți AstroAI sau experiența ta",
+    "account.contact.topics.other.label": "Altceva",
+    "account.contact.topics.other.description": "Orice altceva vrei să ne transmiți",
     "account.hero.welcomeEyebrow": "Cont cosmic",
     "account.hero.welcomeTitle": "Bine ai revenit,",
     "account.hero.welcomeSubtitle":

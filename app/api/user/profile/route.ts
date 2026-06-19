@@ -6,6 +6,8 @@ import { getCosmicProfile, getCosmicProfileRef, getUserRef } from "@/lib/firebas
 import { logError, logInfo } from "@/lib/logging/logger"
 import { getResolvedBirthLocationFromSource } from "@/lib/location/profile-location"
 import { isNatalReady } from "@/lib/divineapi/natal-overview"
+import { hasAstroInputsChanged } from "@/lib/profile/astro-input-fingerprint"
+import { invalidateDerivedAstrologyData } from "@/lib/profile/invalidate-derived-astrology"
 import { isAstrologyProfileComplete } from "@/lib/profile/input-policy"
 import {
   isValidBirthDateString,
@@ -170,6 +172,15 @@ export async function POST(request: Request) {
     const profileRef = getCosmicProfileRef(user.uid)
     const userRef = getUserRef(user.uid)
     const profileSnapshot = await profileRef.get()
+    const existingProfile = profileSnapshot.exists
+      ? (profileSnapshot.data() as Record<string, unknown>)
+      : null
+    const astroInputsChanged = hasAstroInputsChanged(existingProfile, profile)
+
+    if (astroInputsChanged) {
+      await invalidateDerivedAstrologyData(user.uid)
+    }
+
     const batch = profileRef.firestore.batch()
 
     batch.set(
@@ -191,9 +202,13 @@ export async function POST(request: Request) {
     )
 
     await batch.commit()
-    await logInfo("profile", "profile_saved", { uid: user.uid, mainFocus: profile.mainFocus })
+    await logInfo("profile", "profile_saved", {
+      uid: user.uid,
+      mainFocus: profile.mainFocus,
+      astroInputsChanged,
+    })
 
-    return successResponse()
+    return successResponse({ astroInputsChanged })
   } catch (error) {
     await logError("profile", "profile_save_failed", { uid: user.uid, error })
 

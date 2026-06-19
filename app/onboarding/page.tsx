@@ -391,6 +391,9 @@ function OnboardingPageContent() {
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [isGeneratingDivine, setIsGeneratingDivine] = useState(false)
   const onboardingStartedTrackedRef = useRef(false)
+  const regenerationSource = searchParams.get("source")
+  const isAccountRegeneration = regenerationSource === "account"
+  const isDivineRegeneration = searchParams.get("phase") === "divine"
 
   useEffect(() => {
     if (isProfileGateLoading || step !== 1 || onboardingStartedTrackedRef.current) return
@@ -460,14 +463,19 @@ function OnboardingPageContent() {
           if (isMainFocus(response.profile.mainFocus)) setFocus(response.profile.mainFocus)
         }
 
-        if (response.profile && response.profileComplete && response.natalReady) {
+        if (
+          response.profile &&
+          response.profileComplete &&
+          response.natalReady &&
+          !isDivineRegeneration
+        ) {
           router.replace(localizedPath("/chat"))
           return
         }
 
         if (response.profile && response.profileComplete && response.natalReady === false) {
           setStep(4)
-        } else if (searchParams.get("phase") === "divine" && response.profileComplete) {
+        } else if (isDivineRegeneration && response.profileComplete) {
           setStep(4)
         }
       } catch {
@@ -484,7 +492,7 @@ function OnboardingPageContent() {
     return () => {
       cancelled = true
     }
-  }, [localizedPath, router, searchParams])
+  }, [isDivineRegeneration, localizedPath, router, searchParams])
 
   function canProceed() {
     if (step === 1) return name.trim().length > 0
@@ -562,6 +570,20 @@ function OnboardingPageContent() {
     setGenerationError(null)
 
     try {
+      if (isAccountRegeneration) {
+        const response = await apiFetch<{
+          success: true
+          natal: NatalRevealPayload
+        }>("/api/astrology/generate-all", {
+          method: "POST",
+          body: { force: true, source: "account" },
+        })
+
+        setNatalRevealData(response.natal)
+        setStep(5)
+        return
+      }
+
       const response = await apiFetch<{
         success: true
         generated: boolean
@@ -583,11 +605,15 @@ function OnboardingPageContent() {
     } finally {
       setIsGeneratingDivine(false)
     }
-  }, [t])
+  }, [isAccountRegeneration, t])
 
   function skipToChat() {
     const agent = getRecommendedAgentForMainFocus(focus)
     router.push(localizedPath(`/chat?agent=${agent}`))
+  }
+
+  function returnToAccount() {
+    router.replace(localizedPath("/account"))
   }
 
   function startChatWithGuide() {
@@ -683,13 +709,13 @@ function OnboardingPageContent() {
                 errorMessage={generationError}
                 isRetrying={isGeneratingDivine}
                 onGenerate={generateNatalChart}
-                onSkip={skipToChat}
+                onSkip={isAccountRegeneration ? returnToAccount : skipToChat}
               />
             )}
             {step === 5 && natalRevealData && (
               <NatalChartReveal
                 natal={natalRevealData}
-                onContinue={() => setStep(6)}
+                onContinue={() => (isAccountRegeneration ? returnToAccount() : setStep(6))}
               />
             )}
             {step === 6 && (

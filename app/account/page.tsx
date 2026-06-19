@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { LogOut, Sparkles } from "lucide-react"
 
 import { DeleteAccountSection } from "@/components/account/delete-account-section"
+import { ContactSection } from "@/components/account/contact-section"
 import {
   PartnerCompatibilitySection,
   type SynastryRunRequest,
@@ -165,12 +166,15 @@ type PartnerListPayload = {
 }
 
 type DivineDetailTab = "natal" | "daily" | "synastry"
+// TEMP: Compatibility tab hidden on /account — set to true to restore the tab + section below.
+const ACCOUNT_COMPATIBILITY_TAB_ENABLED = false
 type AccountSectionTab =
   | "overview"
   | "cosmic_profile"
   | "daily_guidance"
   | "compatibility"
   | "billing"
+  | "contact"
   | "account_settings"
 type SubscriptionStatusPayload = {
   subscriptionStatus: string
@@ -265,8 +269,9 @@ function AccountPageContent() {
       tab === "overview" ||
       tab === "cosmic_profile" ||
       tab === "daily_guidance" ||
-      tab === "compatibility" ||
+      (ACCOUNT_COMPATIBILITY_TAB_ENABLED && tab === "compatibility") ||
       tab === "billing" ||
+      tab === "contact" ||
       tab === "account_settings"
     ) {
       setActiveSectionTab(tab)
@@ -677,19 +682,28 @@ function AccountPageContent() {
         )
       }
 
-      await apiFetch("/api/user/profile", {
-        method: "POST",
-        body: {
-          ...form,
-          birthPlace: profileResolvedLocation.birthPlace,
-          birthPlacePlaceId: profileResolvedLocation.placeId,
-          latitude: profileResolvedLocation.latitude,
-          longitude: profileResolvedLocation.longitude,
-          timezoneIana: profileResolvedLocation.timezoneIana,
-          timezoneOffsetNow: profileResolvedLocation.timezoneOffsetNow,
-          timezoneOffsetAtBirth: profileResolvedLocation.timezoneOffsetAtBirth,
-        },
-      })
+      const response = await apiFetch<{ success: true; astroInputsChanged?: boolean }>(
+        "/api/user/profile",
+        {
+          method: "POST",
+          body: {
+            ...form,
+            birthPlace: profileResolvedLocation.birthPlace,
+            birthPlacePlaceId: profileResolvedLocation.placeId,
+            latitude: profileResolvedLocation.latitude,
+            longitude: profileResolvedLocation.longitude,
+            timezoneIana: profileResolvedLocation.timezoneIana,
+            timezoneOffsetNow: profileResolvedLocation.timezoneOffsetNow,
+            timezoneOffsetAtBirth: profileResolvedLocation.timezoneOffsetAtBirth,
+          },
+        }
+      )
+
+      if (response.astroInputsChanged) {
+        router.push(localizedPath("/onboarding?phase=divine&source=account"))
+        return
+      }
+
       setMessage(t("account.profile.saved"))
       await loadDivineOverview()
     } catch (saveError) {
@@ -770,8 +784,14 @@ function AccountPageContent() {
               ["overview", t("account.tabs.overview")],
               ["cosmic_profile", t("account.tabs.cosmicProfile")],
               ["daily_guidance", t("account.tabs.dailyGuidance")],
-              ["compatibility", t("account.compatibility.title")],
+              // TEMP: uncomment next line when ACCOUNT_COMPATIBILITY_TAB_ENABLED is true
+              ...(ACCOUNT_COMPATIBILITY_TAB_ENABLED
+                ? ([["compatibility", t("account.compatibility.title")]] as Array<
+                    [AccountSectionTab, string]
+                  >)
+                : []),
               ["billing", t("account.tabs.billing")],
+              ["contact", t("account.tabs.contact")],
               ["account_settings", t("account.tabs.accountSettings")],
             ] as Array<[AccountSectionTab, string]>).map(([tab, label]) => (
               <button
@@ -1089,6 +1109,7 @@ function AccountPageContent() {
                 <div className="sm:col-span-2 flex items-center gap-3">
                   <button
                     type="submit"
+                    data-testid="account-profile-save"
                     disabled={saving || !profileResolvedLocation}
                     className="rounded-lg bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-4 py-2 text-sm font-semibold text-foreground disabled:opacity-60"
                   >
@@ -1160,7 +1181,8 @@ function AccountPageContent() {
             </section>
           )}
 
-          {activeSectionTab === "compatibility" && (
+          {/* TEMP: restore when ACCOUNT_COMPATIBILITY_TAB_ENABLED is true */}
+          {ACCOUNT_COMPATIBILITY_TAB_ENABLED && activeSectionTab === "compatibility" && (
             <PartnerCompatibilitySection
               partners={partners}
               divineOverview={divineOverview}
@@ -1169,6 +1191,10 @@ function AccountPageContent() {
               onRunSynastry={runSynastry}
               onPartnersChanged={reloadPartners}
             />
+          )}
+
+          {activeSectionTab === "contact" && (
+            <ContactSection userName={form.name || profile?.name} />
           )}
 
           {activeSectionTab === "account_settings" && (
