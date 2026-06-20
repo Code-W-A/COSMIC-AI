@@ -13,9 +13,13 @@ export function getSentryDsn() {
   return process.env.NEXT_PUBLIC_SENTRY_DSN?.trim() || process.env.SENTRY_DSN?.trim() || ""
 }
 
+function isSentryDebugEnabled() {
+  return process.env.SENTRY_DEBUG === "1" || process.env.NEXT_PUBLIC_SENTRY_DEBUG === "1"
+}
+
 export function isSentryEnabled() {
   if (process.env.E2E_MOCK_EXTERNALS === "1") return false
-  if (process.env.NODE_ENV !== "production" && process.env.SENTRY_DEBUG !== "1") return false
+  if (process.env.NODE_ENV !== "production" && !isSentryDebugEnabled()) return false
   return Boolean(getSentryDsn())
 }
 
