@@ -14,6 +14,7 @@ function shouldBypass(pathname: string) {
     pathname.startsWith("/favicon") ||
     pathname.startsWith("/robots.txt") ||
     pathname.startsWith("/sitemap.xml") ||
+    pathname === "/sentry-example-page" ||
     /\.[a-zA-Z0-9]+$/.test(pathname)
   )
 }

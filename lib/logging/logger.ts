@@ -3,6 +3,7 @@ import "server-only"
 import { FieldValue } from "firebase-admin/firestore"
 
 import { getAdminDb } from "@/lib/firebase/admin"
+import { reportErrorToSentry } from "@/lib/sentry/report-error"
 
 type LogLevel = "info" | "warn" | "error"
 type LogMetadata = Record<string, unknown> & { uid?: string }
@@ -99,5 +100,6 @@ export function logWarn(scope: string, message: string, metadata?: LogMetadata) 
 }
 
 export function logError(scope: string, message: string, metadata?: LogMetadata) {
+  void reportErrorToSentry(scope, message, metadata).catch(() => {})
   return writeLog("error", scope, message, metadata)
 }
