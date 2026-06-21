@@ -3,8 +3,10 @@
 Document concis care identifica fluxurile principale ale aplicatiei si le mapeaza
 la testele functionale. Cazurile de testare manuale detaliate raman in
 [`TEST_PLAN.md`](../../TEST_PLAN.md), iar inventarul de functionalitati si
-riscuri in [`QA_AUDIT.md`](../../QA_AUDIT.md). Acest document nu le duplica, ci le
-leaga de automatizarea Playwright din `e2e/`.
+riscuri in [`QA_AUDIT.md`](../../QA_AUDIT.md). Pentru verificarea manuala
+completa pe **productie** (checklist-uri bifabile, diagrame, ~67 teste PROD-*),
+foloseste [`MANUAL_VERIFICATION_PRODUCTION.md`](./MANUAL_VERIFICATION_PRODUCTION.md).
+Acest document nu le duplica, ci le leaga de automatizarea Playwright din `e2e/`.
 
 ## Context tehnic
 
