@@ -8,6 +8,7 @@ import { trackAnalyticsEvent } from "@/lib/analytics/track-server"
 import { logError, logInfo, logWarn } from "@/lib/logging/logger"
 import {
   cancelOblioInvoiceForStripeInvoice,
+  getOblioBillingPhase,
   issueOblioCorrectionForStripeCreditNote,
   issueOblioInvoiceForStripeInvoice,
   markOblioCorrectionVoided,
@@ -211,18 +212,25 @@ async function handleInvoiceEvent(event: Stripe.Event, kind: "succeeded" | "fail
   const invoice = event.data.object as Stripe.Invoice
   const subscriptionId = getSubscriptionIdFromInvoice(invoice)
   const uid = await resolveUidForInvoice(invoice)
+  const billingPhase = getOblioBillingPhase(invoice)
+  const paymentContext = {
+    uid: uid ?? undefined,
+    invoiceId: invoice.id,
+    stripeCustomerId: getCustomerId(invoice.customer),
+    subscriptionId,
+    billingPhase,
+    billingReason: invoice.billing_reason ?? undefined,
+    amountPaid: invoice.amount_paid,
+    currency: invoice.currency,
+    plan: typeof invoice.metadata?.plan === "string" ? invoice.metadata.plan : undefined,
+  }
 
   await logInfo(
     "stripe.webhook",
     kind === "succeeded"
       ? "stripe_invoice_payment_succeeded"
       : "stripe_invoice_payment_failed",
-    {
-      uid: uid ?? undefined,
-      invoiceId: invoice.id,
-      stripeCustomerId: getCustomerId(invoice.customer),
-      subscriptionId,
-    }
+    paymentContext
   )
 
   if (uid && kind === "failed") {
@@ -245,13 +253,28 @@ async function handleInvoiceEvent(event: Stripe.Event, kind: "succeeded" | "fail
     await syncSubscription(event, subscription)
   }
 
+  if (kind === "succeeded" && !uid) {
+    await logError("stripe.webhook", "oblio_invoice_uid_missing_after_payment", paymentContext)
+  }
+
   if (kind === "succeeded" && uid) {
     try {
-      await issueOblioInvoiceForStripeInvoice({ uid, invoice })
+      const outcome = await issueOblioInvoiceForStripeInvoice({ uid, invoice })
+
+      if (outcome.status === "failed") {
+        await logError("stripe.webhook", "oblio_invoice_not_created_after_payment", {
+          ...paymentContext,
+          oblioStatus: outcome.status,
+        })
+      } else if (outcome.status === "pending") {
+        await logWarn("stripe.webhook", "oblio_invoice_pending_retry_after_payment", {
+          ...paymentContext,
+          oblioStatus: outcome.status,
+        })
+      }
     } catch (error) {
-      await logWarn("stripe.webhook", "oblio_invoice_issue_skipped", {
-        uid,
-        invoiceId: invoice.id,
+      await logError("stripe.webhook", "oblio_invoice_issue_unexpected_error", {
+        ...paymentContext,
         error: getErrorMessage(error),
       })
     }

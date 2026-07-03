@@ -67,6 +67,28 @@ function getPlanLabel(invoice: Stripe.Invoice) {
   return "AstroAI 24/7 Subscription"
 }
 
+export type OblioBillingPhase = "first_subscription" | "renewal" | "other"
+
+export function getOblioBillingPhase(invoice: Stripe.Invoice): OblioBillingPhase {
+  if (invoice.billing_reason === "subscription_create") return "first_subscription"
+  if (invoice.billing_reason === "subscription_cycle") return "renewal"
+  return "other"
+}
+
+function getOblioInvoiceLogContext(uid: string, invoice: Stripe.Invoice) {
+  return {
+    uid,
+    stripeInvoiceId: invoice.id,
+    stripeSubscriptionId: getSubscriptionIdFromInvoice(invoice),
+    stripeCustomerId: getExpandableId(invoice.customer),
+    billingPhase: getOblioBillingPhase(invoice),
+    billingReason: invoice.billing_reason ?? undefined,
+    amountPaid: invoice.amount_paid,
+    currency: invoice.currency,
+    plan: typeof invoice.metadata?.plan === "string" ? invoice.metadata.plan : undefined,
+  }
+}
+
 function toCurrencyValue(valueInCents?: number | null) {
   if (typeof valueInCents !== "number") return 0
   return Number((valueInCents / 100).toFixed(2))
@@ -276,6 +298,12 @@ export async function issueOblioInvoiceForStripeInvoice(params: { uid: string; i
   }
 
   const attemptCount = typeof existing?.attemptCount === "number" ? existing.attemptCount + 1 : 1
+  const logContext = getOblioInvoiceLogContext(uid, invoice)
+
+  await logInfo("oblio.invoice", "oblio_invoice_issue_started", {
+    ...logContext,
+    attemptCount,
+  })
 
   try {
     const payload = await buildInvoicePayload(uid, invoice)
@@ -291,6 +319,7 @@ export async function issueOblioInvoiceForStripeInvoice(params: { uid: string; i
         stripeInvoiceId,
         stripeCustomerId,
         stripeSubscriptionId,
+        billingPhase: getOblioBillingPhase(invoice),
         rawStripeInvoice: toRetryInvoiceSnapshot(invoice),
         status: "issued",
         attemptCount,
@@ -304,15 +333,23 @@ export async function issueOblioInvoiceForStripeInvoice(params: { uid: string; i
     )
 
     await logInfo("oblio.invoice", "oblio_invoice_issued", {
-      uid,
-      stripeInvoiceId,
-      stripeSubscriptionId,
+      ...logContext,
+      attemptCount,
     })
 
     return { status: "issued" as const }
   } catch (error) {
     const nextRetryAt = getNextRetryTimestamp(attemptCount)
     const status = nextRetryAt ? "pending" : "failed"
+    const lastError = getLastError(error)
+    const failureContext = {
+      ...logContext,
+      attemptCount,
+      status,
+      lastError,
+      willRetry: status === "pending",
+      error,
+    }
 
     await jobRef.set(
       {
@@ -320,10 +357,11 @@ export async function issueOblioInvoiceForStripeInvoice(params: { uid: string; i
         stripeInvoiceId,
         stripeCustomerId,
         stripeSubscriptionId,
+        billingPhase: getOblioBillingPhase(invoice),
         rawStripeInvoice: toRetryInvoiceSnapshot(invoice),
         status,
         attemptCount,
-        lastError: getLastError(error),
+        lastError,
         nextRetryAt: nextRetryAt ?? FieldValue.delete(),
         createdAt: existing?.createdAt ?? FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
@@ -331,14 +369,11 @@ export async function issueOblioInvoiceForStripeInvoice(params: { uid: string; i
       { merge: true }
     )
 
-    await logWarn("oblio.invoice", "oblio_invoice_issue_failed", {
-      uid,
-      stripeInvoiceId,
-      stripeSubscriptionId,
-      attemptCount,
-      status,
-      error,
-    })
+    if (status === "failed") {
+      await logError("oblio.invoice", "oblio_invoice_issue_failed", failureContext)
+    } else {
+      await logWarn("oblio.invoice", "oblio_invoice_issue_pending_retry", failureContext)
+    }
 
     return { status: status as "pending" | "failed" }
   }
@@ -792,6 +827,9 @@ export async function runPendingOblioRetries(limit = 20) {
       const uid = typeof data.uid === "string" ? data.uid : ""
 
       if (!uid) {
+        await logError("oblio.invoice", "oblio_retry_missing_uid", {
+          stripeInvoiceId,
+        })
         await doc.ref.set(
           {
             status: "failed",
@@ -811,7 +849,7 @@ export async function runPendingOblioRetries(limit = 20) {
         const rawInvoice = data.rawStripeInvoice
 
         if (!rawInvoice || typeof rawInvoice !== "object") {
-          await logWarn("oblio.invoice", "oblio_retry_missing_invoice_payload", {
+          await logError("oblio.invoice", "oblio_retry_missing_invoice_payload", {
             uid,
             stripeInvoiceId,
           })
