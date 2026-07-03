@@ -37,9 +37,20 @@ test.describe("Autentificare", () => {
     await page.getByTestId("auth-email-input").fill(uniqueEmail)
     await page.getByTestId("auth-password-input").fill("AstroE2E!234")
     await page.getByTestId("auth-confirm-password-input").fill("AstroE2E!234")
+    await page.getByTestId("auth-terms-checkbox").click()
     await page.getByTestId("auth-submit-register").click()
 
     await expect(page).toHaveURL(/\/en\/onboarding/)
+  })
+
+  test("AUTH-01b register fara acceptare termeni -> buton dezactivat", async ({ page, localized }) => {
+    await page.goto(localized("/register"))
+    await page.getByTestId("auth-email-input").fill("test@example.com")
+    await page.getByTestId("auth-password-input").fill("AstroE2E!234")
+    await page.getByTestId("auth-confirm-password-input").fill("AstroE2E!234")
+
+    await expect(page.getByTestId("auth-submit-register")).toBeDisabled()
+    await expect(page.getByTestId("auth-google-button")).toBeDisabled()
   })
 
   test("AUTH-06 logout restrictioneaza accesul la chat", async ({ page, loginAs, localized }) => {

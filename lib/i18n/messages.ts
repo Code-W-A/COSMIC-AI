@@ -40,6 +40,11 @@ export const messages: Record<Locale, MessageMap> = {
     "auth.placeholder.password": "At least 6 characters",
     "auth.placeholder.confirmPassword": "Repeat your password",
     "auth.error.passwordMismatch": "Passwords do not match.",
+    "auth.error.termsRequired": "You must accept the Terms and Conditions and Privacy Policy to create an account.",
+    "auth.terms.prefix": "I agree to the",
+    "auth.terms.termsLink": "Terms and Conditions",
+    "auth.terms.and": "and",
+    "auth.terms.privacyLink": "Privacy Policy",
     "auth.password.show": "Show password",
     "auth.password.hide": "Hide password",
     "auth.submit.register": "Create account",
@@ -64,6 +69,9 @@ export const messages: Record<Locale, MessageMap> = {
     "auth.reset.email.subject": "Reset your AstroAI 24/7 password",
     "auth.reset.email.body":
       "Hello,\n\nWe received a request to reset your AstroAI 24/7 password.\n\nClick the link below to choose a new password:\n%LINK%\n\nThis link expires after a short time. If you did not request a password reset, you can safely ignore this email.\n\nAstroAI 24/7",
+
+    "legal.lastUpdated": "Last updated",
+    "legal.backToHome": "Back to home",
 
     "onboarding.step1.subtitle":
       "Enter your birth details so your stellar guides can personalize your readings.",
@@ -555,6 +563,11 @@ export const messages: Record<Locale, MessageMap> = {
     "auth.placeholder.password": "Minimum 6 caractere",
     "auth.placeholder.confirmPassword": "Repetă parola",
     "auth.error.passwordMismatch": "Parolele nu coincid.",
+    "auth.error.termsRequired": "Trebuie să accepți Termenii și condițiile și Politica de confidențialitate pentru a crea un cont.",
+    "auth.terms.prefix": "Accept",
+    "auth.terms.termsLink": "Termenii și condițiile",
+    "auth.terms.and": "și",
+    "auth.terms.privacyLink": "Politica de confidențialitate",
     "auth.password.show": "Afișează parola",
     "auth.password.hide": "Ascunde parola",
     "auth.submit.register": "Creează cont",
@@ -579,6 +592,9 @@ export const messages: Record<Locale, MessageMap> = {
     "auth.reset.email.subject": "Resetează parola AstroAI 24/7",
     "auth.reset.email.body":
       "Salut,\n\nAm primit o solicitare de resetare a parolei pentru contul tău AstroAI 24/7.\n\nApasă pe linkul de mai jos pentru a alege o parolă nouă:\n%LINK%\n\nLinkul expiră după un timp scurt. Dacă nu ai solicitat resetarea parolei, poți ignora acest email.\n\nAstroAI 24/7",
+
+    "legal.lastUpdated": "Ultima actualizare",
+    "legal.backToHome": "Înapoi acasă",
 
     "onboarding.step1.subtitle":
       "Introdu detaliile nașterii ca ghizii tăi stelari să îți personalizeze citirile.",

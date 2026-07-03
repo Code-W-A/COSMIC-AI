@@ -19,9 +19,9 @@ const footerLinks = {
       { label: "Press", href: "#" },
     ],
     Legal: [
-      { label: "Privacy Policy", href: "#" },
-      { label: "Terms of Service", href: "#" },
-      { label: "Cookie Policy", href: "#" },
+      { label: "Privacy Policy", href: "/privacy" },
+      { label: "Terms of Service", href: "/terms" },
+      { label: "Cookie Policy", href: "/cookies" },
     ],
   },
   ro: {
@@ -38,9 +38,9 @@ const footerLinks = {
       { label: "Presă", href: "#" },
     ],
     Legal: [
-      { label: "Politica de confidențialitate", href: "#" },
-      { label: "Termeni și condiții", href: "#" },
-      { label: "Politica cookies", href: "#" },
+      { label: "Politica de confidențialitate", href: "/privacy" },
+      { label: "Termeni și condiții", href: "/terms" },
+      { label: "Politica cookies", href: "/cookies" },
     ],
   },
 }
@@ -94,16 +94,22 @@ export function Footer() {
                 {title}
               </h4>
               <ul className="space-y-3">
-                {links.map((link) => (
-                  <li key={link.label}>
-                    <a
-                      href={link.href.startsWith("/#") ? `${localizedPath("/")}${link.href.slice(1)}` : link.href}
-                      className="text-sm text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
-                    >
-                      {link.label}
-                    </a>
-                  </li>
-                ))}
+                {links.map((link) => {
+                  const href = link.href.startsWith("/#")
+                    ? `${localizedPath("/")}${link.href.slice(1)}`
+                    : localizedPath(link.href)
+
+                  return (
+                    <li key={link.label}>
+                      <Link
+                        href={href}
+                        className="text-sm text-[#B8B2D9] transition-colors hover:text-[#F5F2FF]"
+                      >
+                        {link.label}
+                      </Link>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           ))}

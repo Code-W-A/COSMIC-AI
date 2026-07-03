@@ -8,6 +8,7 @@ import { ArrowRight } from "lucide-react"
 import { AppLogo } from "@/components/branding/app-logo"
 import { CosmicAuthLoading } from "@/components/auth/cosmic-auth-loading"
 import { PasswordInput } from "@/components/auth/password-input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { resolvePostAuthRoute } from "@/lib/auth/resolvePostAuthRoute"
 import { logClientEvent } from "@/lib/logging/client-log"
 import { LanguageSwitcher } from "@/components/i18n/language-switcher"
@@ -29,6 +30,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
@@ -49,6 +51,11 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === "register") {
+        if (!acceptedTerms) {
+          setError(t("auth.error.termsRequired"))
+          setSubmitting(false)
+          return
+        }
         if (password !== confirmPassword) {
           setError(t("auth.error.passwordMismatch"))
           setSubmitting(false)
@@ -85,6 +92,11 @@ export function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === "register") {
+        if (!acceptedTerms) {
+          setError(t("auth.error.termsRequired"))
+          setGoogleSubmitting(false)
+          return
+        }
         await registerOrLoginWithGoogle(email.trim() || undefined, password || undefined)
       } else {
         await loginWithGoogle(email.trim() || undefined, password || undefined)
@@ -216,6 +228,37 @@ export function AuthForm({ mode }: AuthFormProps) {
             )}
           </div>
 
+          {isRegister && (
+            <label className="mt-5 flex items-start gap-3">
+              <Checkbox
+                data-testid="auth-terms-checkbox"
+                checked={acceptedTerms}
+                onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="text-sm leading-relaxed text-muted-foreground">
+                {t("auth.terms.prefix")}{" "}
+                <Link
+                  href={localizedPath("/terms")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-cosmic-lavender hover:text-foreground"
+                >
+                  {t("auth.terms.termsLink")}
+                </Link>{" "}
+                {t("auth.terms.and")}{" "}
+                <Link
+                  href={localizedPath("/privacy")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-cosmic-lavender hover:text-foreground"
+                >
+                  {t("auth.terms.privacyLink")}
+                </Link>
+              </span>
+            </label>
+          )}
+
           {error && (
             <p data-testid="auth-error-message" className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-sm text-red-100">
               {error}
@@ -225,7 +268,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           <button
             type="submit"
             data-testid={`auth-submit-${mode}`}
-            disabled={submitting}
+            disabled={submitting || (isRegister && !acceptedTerms)}
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting
@@ -248,7 +291,7 @@ export function AuthForm({ mode }: AuthFormProps) {
             type="button"
             data-testid="auth-google-button"
             onClick={handleGoogleAuth}
-            disabled={googleSubmitting}
+            disabled={googleSubmitting || (isRegister && !acceptedTerms)}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-[rgba(255,255,255,0.04)] px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-[rgba(255,255,255,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white text-xs font-bold text-black">

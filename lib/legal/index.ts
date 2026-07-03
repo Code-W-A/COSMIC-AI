@@ -1,0 +1,5 @@
+export { LEGAL_OPERATOR } from "@/lib/legal/operator"
+export { privacyPolicy } from "@/lib/legal/privacy"
+export { termsOfService } from "@/lib/legal/terms"
+export { cookiePolicy } from "@/lib/legal/cookies"
+export type { LegalDocument, LegalDocumentMap, LegalSection } from "@/lib/legal/types"
