@@ -127,12 +127,13 @@ export const messages: Record<Locale, MessageMap> = {
     "birthTime.placeholder.minute": "Minute",
     "birthTime.formatHint": "24-hour format (HH:MM)",
 
-    "subscription.success.title": "Subscription started",
+    "subscription.success.title": "Subscription active",
     "subscription.success.body":
-      "We’re activating your access in a few moments.",
+      "Your premium access is now active.",
     "subscription.success.syncing": "Syncing your subscription with Stripe...",
     "subscription.success.openChat": "Open chat",
     "subscription.success.viewPlan": "View plan",
+    "subscription.viewPlans": "View plans",
     "subscription.refreshStatus": "Refresh status",
     "subscription.refreshingStatus": "Refreshing...",
     "subscription.refreshFailed":
@@ -650,12 +651,13 @@ export const messages: Record<Locale, MessageMap> = {
     "birthTime.placeholder.minute": "Minut",
     "birthTime.formatHint": "Format 24 de ore (HH:MM)",
 
-    "subscription.success.title": "Abonament activat",
+    "subscription.success.title": "Abonament activ",
     "subscription.success.body":
-      "Îți activăm accesul în câteva momente.",
+      "Accesul tău premium este acum activ.",
     "subscription.success.syncing": "Sincronizăm abonamentul cu Stripe...",
     "subscription.success.openChat": "Deschide chatul",
     "subscription.success.viewPlan": "Vezi planul",
+    "subscription.viewPlans": "Vezi abonamentele",
     "subscription.refreshStatus": "Reîmprospătează statusul",
     "subscription.refreshingStatus": "Se actualizează...",
     "subscription.refreshFailed":

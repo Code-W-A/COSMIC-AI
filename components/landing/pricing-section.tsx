@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { Check, Loader2, Sparkles } from "lucide-react"
 
@@ -17,16 +17,30 @@ import {
   freePlanDisplayPrice,
   getSubscriptionDisplayPrice,
 } from "@/lib/pricing/display"
+import {
+  appendLiveTestPricingParams,
+  buildLiveTestCheckoutFields,
+  resolveLiveTestPricingState,
+} from "@/lib/stripe/live-test-pricing"
 import type { BillingInterval } from "@/types/subscription"
 
 export function PricingSection() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const localizedPath = useLocalizedPath()
   const { t } = useTranslations()
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly")
   const [error, setError] = useState("")
+  const liveTestPricing = useMemo(
+    () => resolveLiveTestPricingState(searchParams),
+    [searchParams]
+  )
   const subscriptionDisplayPrice = getSubscriptionDisplayPrice(billingInterval)
+  const pricingPathWithLiveTest = useMemo(
+    () => appendLiveTestPricingParams(localizedPath("/pricing"), liveTestPricing),
+    [liveTestPricing, localizedPath]
+  )
 
   const plans = useMemo(
     () => [
@@ -117,6 +131,7 @@ export function PricingSection() {
             checkoutType: "subscription",
             plan,
             interval: billingInterval,
+            ...buildLiveTestCheckoutFields(liveTestPricing),
           },
         }
       )
@@ -124,7 +139,9 @@ export function PricingSection() {
       window.location.href = payload.url
     } catch (checkoutError) {
       if (checkoutError instanceof ApiClientError && checkoutError.status === 401) {
-        router.push(`${localizedPath("/login")}?next=${encodeURIComponent(localizedPath("/pricing"))}`)
+        router.push(
+          `${localizedPath("/login")}?next=${encodeURIComponent(pricingPathWithLiveTest)}`
+        )
         return
       }
 
@@ -136,7 +153,10 @@ export function PricingSection() {
         const setupUrl =
           typeof (checkoutError.payload as { setupUrl?: unknown })?.setupUrl === "string"
             ? (checkoutError.payload as { setupUrl: string }).setupUrl
-            : `${localizedPath("/billing/setup")}?plan=${encodeURIComponent(plan)}`
+            : appendLiveTestPricingParams(
+                `${localizedPath("/billing/setup")}?plan=${encodeURIComponent(plan)}`,
+                liveTestPricing
+              )
         router.push(setupUrl)
         return
       }
@@ -175,6 +195,12 @@ export function PricingSection() {
             {t("pricing.subtitle")}
           </p>
         </motion.div>
+
+        {liveTestPricing && (
+          <p className="mx-auto mt-6 max-w-xl rounded-2xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-center text-sm text-amber-100">
+            Live test pricing activ
+          </p>
+        )}
 
         <div className="mt-8 flex justify-center">
           <div className="inline-flex rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] p-1">

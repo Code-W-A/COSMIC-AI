@@ -271,15 +271,26 @@ export function SubscriptionCard() {
                   {refreshLoading ? t("subscription.refreshingStatus") : t("subscription.refreshStatus")}
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={openPortal}
-                disabled={portalLoading || !status}
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {portalLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isRo ? "Gestionează abonamentul" : "Manage subscription"}
-              </button>
+              {status?.isPremium ? (
+                <button
+                  type="button"
+                  onClick={openPortal}
+                  disabled={portalLoading || !status}
+                  data-testid="subscription-manage-portal"
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {portalLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {t("account.billing.manageSubscription")}
+                </button>
+              ) : (
+                <Link
+                  href={localizedPath("/pricing")}
+                  data-testid="subscription-view-plans"
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#6D4BFF] to-[#8B5CFF] px-5 py-3 text-sm font-semibold text-foreground transition"
+                >
+                  {t("subscription.viewPlans")}
+                </Link>
+              )}
             </div>
           </div>
         </div>

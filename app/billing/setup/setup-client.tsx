@@ -16,6 +16,11 @@ import {
   normalizeCountryValue,
 } from "@/lib/billing/address"
 import { useLocalizedPath, useTranslations } from "@/lib/i18n/client"
+import {
+  appendLiveTestPricingParams,
+  buildLiveTestCheckoutFields,
+  resolveLiveTestPricingState,
+} from "@/lib/stripe/live-test-pricing"
 import type { BillingProfilePayload, BillingProfileResponse } from "@/types/billing"
 import type { BillingInterval, CheckoutType, PaidSubscriptionPlan, ReportSku } from "@/types/subscription"
 
@@ -72,6 +77,7 @@ export function BillingSetupClientPage() {
   const planParam = params.get("plan")
   const intervalParam = params.get("interval")
   const skuParam = params.get("sku")
+  const liveTestPricing = useMemo(() => resolveLiveTestPricingState(params), [params])
   const nextCheckout = useMemo<NextCheckoutRequest | null>(() => {
     if (isCheckoutType(checkoutType)) {
       if (
@@ -187,7 +193,10 @@ export function BillingSetupClientPage() {
       "/api/stripe/create-checkout-session",
       {
         method: "POST",
-        body: request,
+        body: {
+          ...request,
+          ...buildLiveTestCheckoutFields(liveTestPricing),
+        },
       }
     )
 
@@ -223,7 +232,9 @@ export function BillingSetupClientPage() {
       }
     } catch (saveError) {
       if (saveError instanceof ApiClientError && saveError.status === 401) {
-        window.location.href = `${localizedPath("/login")}?next=${encodeURIComponent(localizedPath("/billing/setup"))}`
+        window.location.href = `${localizedPath("/login")}?next=${encodeURIComponent(
+          appendLiveTestPricingParams(localizedPath("/billing/setup"), liveTestPricing)
+        )}`
         return
       }
 

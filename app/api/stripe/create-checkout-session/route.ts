@@ -13,7 +13,11 @@ import {
 import { trackAnalyticsEvent } from "@/lib/analytics/track-server"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
-import { getOneOffPriceId, getSubscriptionPriceId } from "@/lib/stripe/prices"
+import {
+  appendLiveTestPricingParams,
+  validateLiveTestPricing,
+} from "@/lib/stripe/live-test-pricing"
+import { getOneOffPriceId, getSubscriptionPriceId, type PricingMode } from "@/lib/stripe/prices"
 import { getStripe } from "@/lib/stripe/server"
 import type {
   BillingInterval,
@@ -57,6 +61,41 @@ type OneOffCheckoutRequest = {
 
 type CheckoutRequest = SubscriptionCheckoutRequest | OneOffCheckoutRequest
 
+type ParsedCheckoutRequest = {
+  checkout: CheckoutRequest
+  pricingMode: PricingMode
+}
+
+function resolvePricingMode(body: Record<string, unknown>): PricingMode {
+  if (body.liveTestPricing !== true) return "standard"
+
+  const clientToken =
+    typeof body.liveTestToken === "string" ? body.liveTestToken : undefined
+
+  return validateLiveTestPricing(clientToken) ? "live_test" : "standard"
+}
+
+function getBillingSetupUrl(request: CheckoutRequest, pricingMode: PricingMode) {
+  const params = new URLSearchParams()
+  params.set("checkoutType", request.checkoutType)
+
+  if (request.checkoutType === "subscription") {
+    params.set("plan", request.plan)
+    params.set("interval", request.interval)
+  } else {
+    params.set("sku", request.sku)
+  }
+
+  const baseUrl = `/billing/setup?${params.toString()}`
+
+  if (pricingMode !== "live_test") return baseUrl
+
+  const token = process.env.STRIPE_LIVE_TEST_PRICING_TOKEN?.trim()
+  if (!token) return baseUrl
+
+  return appendLiveTestPricingParams(baseUrl, { enabled: true, token })
+}
+
 function isBillingInterval(value: unknown): value is BillingInterval {
   return value === "monthly" || value === "annual"
 }
@@ -71,20 +110,6 @@ function isReportSku(value: unknown): value is ReportSku {
 
 function isPaidSubscriptionPlan(value: unknown): value is PaidSubscriptionPlan {
   return value === "premium" || value === "cosmic_plus"
-}
-
-function getBillingSetupUrl(request: CheckoutRequest) {
-  const params = new URLSearchParams()
-  params.set("checkoutType", request.checkoutType)
-
-  if (request.checkoutType === "subscription") {
-    params.set("plan", request.plan)
-    params.set("interval", request.interval)
-  } else {
-    params.set("sku", request.sku)
-  }
-
-  return `/billing/setup?${params.toString()}`
 }
 
 function isMissingStripeCustomerError(error: unknown, stripeCustomerId: string) {
@@ -133,41 +158,37 @@ async function createStripeCustomer(
   })
 }
 
-function parseCheckoutRequest(body: Record<string, unknown>): CheckoutRequest | null {
+function parseCheckoutRequest(body: Record<string, unknown>): ParsedCheckoutRequest | null {
+  const pricingMode = resolvePricingMode(body)
+  let checkout: CheckoutRequest | null = null
+
   if (!isCheckoutType(body.checkoutType)) {
     // Backward compatibility with old payload: { plan: "premium" }
     if (isPaidSubscriptionPlan(body.plan) && body.plan === "premium") {
-      return {
+      checkout = {
         checkoutType: "subscription",
         plan: body.plan,
         interval: "monthly",
       }
     }
-
-    return null
-  }
-
-  if (body.checkoutType === "subscription") {
-    if (
-      body.plan !== "premium" ||
-      !isBillingInterval(body.interval)
-    ) {
-      return null
+  } else if (body.checkoutType === "subscription") {
+    if (body.plan === "premium" && isBillingInterval(body.interval)) {
+      checkout = {
+        checkoutType: "subscription",
+        plan: body.plan,
+        interval: body.interval,
+      }
     }
-
-    return {
-      checkoutType: "subscription",
-      plan: body.plan,
-      interval: body.interval,
+  } else if (isReportSku(body.sku)) {
+    checkout = {
+      checkoutType: "one_off",
+      sku: body.sku,
     }
   }
 
-  if (!isReportSku(body.sku)) return null
+  if (!checkout) return null
 
-  return {
-    checkoutType: "one_off",
-    sku: body.sku,
-  }
+  return { checkout, pricingMode }
 }
 
 async function createCheckoutSession(
@@ -178,12 +199,21 @@ async function createCheckoutSession(
     appUrl: string
     baseMetadata: Record<string, string>
     uid: string
+    pricingMode: PricingMode
   }
 ) {
   const oneOffPriceId =
     checkoutRequest.checkoutType === "one_off"
-      ? getOneOffPriceId(checkoutRequest.sku)
+      ? getOneOffPriceId(checkoutRequest.sku, params.pricingMode)
       : null
+
+  const sessionMetadata: Record<string, string> = {
+    ...params.baseMetadata,
+  }
+
+  if (params.pricingMode === "live_test") {
+    sessionMetadata.pricingMode = "live_test"
+  }
 
   return checkoutRequest.checkoutType === "subscription"
     ? stripe.checkout.sessions.create({
@@ -191,25 +221,37 @@ async function createCheckoutSession(
         customer: stripeCustomerId,
         line_items: [
           {
-            price: getSubscriptionPriceId(checkoutRequest.plan, checkoutRequest.interval),
+            price: getSubscriptionPriceId(
+              checkoutRequest.plan,
+              checkoutRequest.interval,
+              params.pricingMode
+            ),
             quantity: 1,
           },
         ],
         success_url: `${params.appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${params.appUrl}/pricing?checkout=cancelled`,
         metadata: {
-          ...params.baseMetadata,
+          ...sessionMetadata,
           plan: checkoutRequest.plan,
           interval: checkoutRequest.interval,
           reportType: "",
         },
         subscription_data: {
-          metadata: {
-            uid: params.uid,
-            checkoutType: "subscription",
-            plan: checkoutRequest.plan,
-            interval: checkoutRequest.interval,
-          },
+          metadata: (() => {
+            const subscriptionMetadata: Record<string, string> = {
+              uid: params.uid,
+              checkoutType: "subscription",
+              plan: checkoutRequest.plan,
+              interval: checkoutRequest.interval,
+            }
+
+            if (params.pricingMode === "live_test") {
+              subscriptionMetadata.pricingMode = "live_test"
+            }
+
+            return subscriptionMetadata
+          })(),
         },
       })
     : stripe.checkout.sessions.create({
@@ -224,7 +266,7 @@ async function createCheckoutSession(
         success_url: `${params.appUrl}/report?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${params.appUrl}/report?checkout=cancelled`,
         metadata: {
-          ...params.baseMetadata,
+          ...sessionMetadata,
           plan: "",
           interval: "",
           reportType: checkoutRequest.sku,
@@ -247,11 +289,13 @@ export async function POST(request: Request) {
     return errorResponse("invalid_json", "Request body must be valid JSON.", 400)
   }
 
-  const checkoutRequest = parseCheckoutRequest(body)
+  const parsedCheckoutRequest = parseCheckoutRequest(body)
 
-  if (!checkoutRequest) {
+  if (!parsedCheckoutRequest) {
     return errorResponse("invalid_checkout_request", "Provide a valid checkout payload.", 400)
   }
+
+  const { checkout: checkoutRequest, pricingMode } = parsedCheckoutRequest
 
   try {
     assertStripeEnvReady()
@@ -273,7 +317,7 @@ export async function POST(request: Request) {
             code: "billing_profile_required",
             message: "Complete billing details before starting checkout.",
           },
-          setupUrl: getBillingSetupUrl(checkoutRequest),
+          setupUrl: getBillingSetupUrl(checkoutRequest, pricingMode),
         },
         { status: 409 }
       )
@@ -338,6 +382,7 @@ export async function POST(request: Request) {
         appUrl,
         baseMetadata,
         uid: user.uid,
+        pricingMode,
       })
     } catch (error) {
       if (!stripeCustomerId || !isMissingStripeCustomerError(error, stripeCustomerId)) {
@@ -374,6 +419,7 @@ export async function POST(request: Request) {
         appUrl,
         baseMetadata,
         uid: user.uid,
+        pricingMode,
       })
     }
 

@@ -5,6 +5,8 @@ import type {
   SubscriptionPlan,
 } from "@/types/subscription"
 
+export type PricingMode = "standard" | "live_test"
+
 type SubscriptionCatalogEntry = {
   plan: PaidSubscriptionPlan
   interval: BillingInterval
@@ -19,8 +21,25 @@ const subscriptionCatalog: SubscriptionCatalogEntry[] = [
   { plan: "cosmic_plus", interval: "monthly", envName: "STRIPE_PRICE_COSMIC_PLUS_MONTHLY" },
 ]
 
+const liveTestSubscriptionCatalog: SubscriptionCatalogEntry[] = [
+  {
+    plan: "premium",
+    interval: "monthly",
+    envName: "STRIPE_PRICE_PREMIUM_MONTHLY_RON_LIVE_TEST",
+  },
+  {
+    plan: "premium",
+    interval: "annual",
+    envName: "STRIPE_PRICE_PREMIUM_ANNUAL_RON_LIVE_TEST",
+  },
+]
+
 const oneOffCatalog: Record<ReportSku, string[]> = {
   relationship_report: ["STRIPE_PRICE_REPORT_ONEOFF_RON"],
+}
+
+const liveTestOneOffCatalog: Record<ReportSku, string[]> = {
+  relationship_report: ["STRIPE_PRICE_REPORT_ONEOFF_RON_LIVE_TEST"],
 }
 
 function getEnvValue(name: string) {
@@ -28,10 +47,12 @@ function getEnvValue(name: string) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 
-export function getSubscriptionPriceId(plan: PaidSubscriptionPlan, interval: BillingInterval) {
-  const candidates = subscriptionCatalog.filter(
-    (entry) => entry.plan === plan && entry.interval === interval
-  )
+function resolvePriceIdFromCatalog(
+  catalog: SubscriptionCatalogEntry[],
+  plan: PaidSubscriptionPlan,
+  interval: BillingInterval
+) {
+  const candidates = catalog.filter((entry) => entry.plan === plan && entry.interval === interval)
 
   for (const candidate of candidates) {
     const value = getEnvValue(candidate.envName)
@@ -44,8 +65,8 @@ export function getSubscriptionPriceId(plan: PaidSubscriptionPlan, interval: Bil
   )
 }
 
-export function getOneOffPriceId(sku: ReportSku) {
-  const envNames = oneOffCatalog[sku] ?? []
+function resolveOneOffPriceIdFromCatalog(catalog: Record<ReportSku, string[]>, sku: ReportSku) {
+  const envNames = catalog[sku] ?? []
 
   for (const envName of envNames) {
     const value = getEnvValue(envName)
@@ -57,13 +78,22 @@ export function getOneOffPriceId(sku: ReportSku) {
   )
 }
 
-export function getSubscriptionCatalogFromPriceId(priceId?: string | null): {
-  plan: SubscriptionPlan
-  interval: BillingInterval | null
-} {
-  if (!priceId) return { plan: "free", interval: null }
+export function getSubscriptionPriceId(
+  plan: PaidSubscriptionPlan,
+  interval: BillingInterval,
+  mode: PricingMode = "standard"
+) {
+  const catalog = mode === "live_test" ? liveTestSubscriptionCatalog : subscriptionCatalog
+  return resolvePriceIdFromCatalog(catalog, plan, interval)
+}
 
-  for (const entry of subscriptionCatalog) {
+export function getOneOffPriceId(sku: ReportSku, mode: PricingMode = "standard") {
+  const catalog = mode === "live_test" ? liveTestOneOffCatalog : oneOffCatalog
+  return resolveOneOffPriceIdFromCatalog(catalog, sku)
+}
+
+function lookupSubscriptionCatalogFromPriceId(catalog: SubscriptionCatalogEntry[], priceId: string) {
+  for (const entry of catalog) {
     const value = getEnvValue(entry.envName)
     if (value && value === priceId) {
       return {
@@ -73,13 +103,14 @@ export function getSubscriptionCatalogFromPriceId(priceId?: string | null): {
     }
   }
 
-  return { plan: "free", interval: null }
+  return null
 }
 
-export function getReportSkuFromPriceId(priceId?: string | null): ReportSku | null {
-  if (!priceId) return null
-
-  for (const [sku, envNames] of Object.entries(oneOffCatalog) as [ReportSku, string[]][]) {
+function lookupReportSkuFromPriceId(
+  catalog: Record<ReportSku, string[]>,
+  priceId: string
+): ReportSku | null {
+  for (const [sku, envNames] of Object.entries(catalog) as [ReportSku, string[]][]) {
     for (const envName of envNames) {
       const value = getEnvValue(envName)
       if (value && value === priceId) return sku
@@ -87,6 +118,30 @@ export function getReportSkuFromPriceId(priceId?: string | null): ReportSku | nu
   }
 
   return null
+}
+
+export function getSubscriptionCatalogFromPriceId(priceId?: string | null): {
+  plan: SubscriptionPlan
+  interval: BillingInterval | null
+} {
+  if (!priceId) return { plan: "free", interval: null }
+
+  const standardMatch = lookupSubscriptionCatalogFromPriceId(subscriptionCatalog, priceId)
+  if (standardMatch) return standardMatch
+
+  const liveTestMatch = lookupSubscriptionCatalogFromPriceId(liveTestSubscriptionCatalog, priceId)
+  if (liveTestMatch) return liveTestMatch
+
+  return { plan: "free", interval: null }
+}
+
+export function getReportSkuFromPriceId(priceId?: string | null): ReportSku | null {
+  if (!priceId) return null
+
+  return (
+    lookupReportSkuFromPriceId(oneOffCatalog, priceId) ??
+    lookupReportSkuFromPriceId(liveTestOneOffCatalog, priceId)
+  )
 }
 
 export function isPaidPlan(value: unknown): value is PaidSubscriptionPlan {

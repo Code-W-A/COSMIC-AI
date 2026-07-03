@@ -713,7 +713,10 @@ flowchart LR
 - [ ] `STRIPE_SECRET_KEY` = `sk_live_...`
 - [ ] `STRIPE_WEBHOOK_SECRET` = webhook live
 - [ ] `STRIPE_PRICE_PREMIUM_*_RON` = price IDs live
+- [ ] (opțional, QA cu sumă mică) `STRIPE_LIVE_TEST_PRICING_TOKEN` + `STRIPE_PRICE_*_LIVE_TEST`
 - [ ] Webhook activ către `/api/stripe/webhook`
+
+**Live test pricing (sumă mică, tot live mode):** deschide `/ro/pricing?test=true&token=YOUR_TOKEN` — banner „Live test pricing activ”, checkout folosește price IDs din `STRIPE_PRICE_*_LIVE_TEST`. Fără token valid → prețuri normale.
 
 ```mermaid
 flowchart TD
@@ -757,7 +760,7 @@ flowchart TD
 
 **Precondiții:** Billing setup complet.
 
-**Pași:** Activează Premium lunar → Stripe Checkout → plată.
+**Pași:** Activează Premium lunar → Stripe Checkout → plată. Pentru sumă mică în live: `/ro/pricing?test=true&token=YOUR_TOKEN` apoi același flow.
 
 **Rezultat așteptat:** Plată reușită în Stripe Dashboard (live).
 

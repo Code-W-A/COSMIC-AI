@@ -1229,10 +1229,21 @@ function AccountPageContent() {
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">{t("account.billing.actionsTitle")}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
-                      href={localizedPath("/account/subscription")}
+                      href={
+                        subscriptionStatus?.isPremium
+                          ? localizedPath("/account/subscription")
+                          : localizedPath("/pricing")
+                      }
+                      data-testid={
+                        subscriptionStatus?.isPremium
+                          ? "account-billing-manage-subscription"
+                          : "account-billing-view-plans"
+                      }
                       className="rounded-lg border border-white/20 px-4 py-2 text-sm text-foreground hover:bg-white/5"
                     >
-                      {t("account.billing.manageSubscription")}
+                      {subscriptionStatus?.isPremium
+                        ? t("account.billing.manageSubscription")
+                        : t("subscription.viewPlans")}
                     </Link>
                     <Link
                       href={localizedPath("/billing/setup")}
