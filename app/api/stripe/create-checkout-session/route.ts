@@ -21,6 +21,7 @@ import type {
   PaidSubscriptionPlan,
   ReportSku,
 } from "@/types/subscription"
+import type Stripe from "stripe"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -86,6 +87,52 @@ function getBillingSetupUrl(request: CheckoutRequest) {
   return `/billing/setup?${params.toString()}`
 }
 
+function isMissingStripeCustomerError(error: unknown, stripeCustomerId: string) {
+  if (!error || typeof error !== "object") return false
+
+  const maybeStripeError = error as {
+    code?: unknown
+    message?: unknown
+    raw?: { code?: unknown; message?: unknown }
+  }
+
+  const code =
+    typeof maybeStripeError.code === "string"
+      ? maybeStripeError.code
+      : typeof maybeStripeError.raw?.code === "string"
+        ? maybeStripeError.raw.code
+        : null
+  const message =
+    typeof maybeStripeError.message === "string"
+      ? maybeStripeError.message
+      : typeof maybeStripeError.raw?.message === "string"
+        ? maybeStripeError.raw.message
+        : null
+
+  return (
+    code === "resource_missing" &&
+    Boolean(message?.includes("No such customer")) &&
+    Boolean(message?.includes(stripeCustomerId))
+  )
+}
+
+async function createStripeCustomer(
+  stripe: Stripe,
+  params: {
+    uid: string
+    email?: string | null
+    name?: string | null
+  }
+) {
+  return stripe.customers.create({
+    email: params.email ?? undefined,
+    name: params.name ?? undefined,
+    metadata: {
+      uid: params.uid,
+    },
+  })
+}
+
 function parseCheckoutRequest(body: Record<string, unknown>): CheckoutRequest | null {
   if (!isCheckoutType(body.checkoutType)) {
     // Backward compatibility with old payload: { plan: "premium" }
@@ -121,6 +168,70 @@ function parseCheckoutRequest(body: Record<string, unknown>): CheckoutRequest | 
     checkoutType: "one_off",
     sku: body.sku,
   }
+}
+
+async function createCheckoutSession(
+  stripe: Stripe,
+  stripeCustomerId: string,
+  checkoutRequest: CheckoutRequest,
+  params: {
+    appUrl: string
+    baseMetadata: Record<string, string>
+    uid: string
+  }
+) {
+  const oneOffPriceId =
+    checkoutRequest.checkoutType === "one_off"
+      ? getOneOffPriceId(checkoutRequest.sku)
+      : null
+
+  return checkoutRequest.checkoutType === "subscription"
+    ? stripe.checkout.sessions.create({
+        mode: "subscription",
+        customer: stripeCustomerId,
+        line_items: [
+          {
+            price: getSubscriptionPriceId(checkoutRequest.plan, checkoutRequest.interval),
+            quantity: 1,
+          },
+        ],
+        success_url: `${params.appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${params.appUrl}/pricing?checkout=cancelled`,
+        metadata: {
+          ...params.baseMetadata,
+          plan: checkoutRequest.plan,
+          interval: checkoutRequest.interval,
+          reportType: "",
+        },
+        subscription_data: {
+          metadata: {
+            uid: params.uid,
+            checkoutType: "subscription",
+            plan: checkoutRequest.plan,
+            interval: checkoutRequest.interval,
+          },
+        },
+      })
+    : stripe.checkout.sessions.create({
+        mode: "payment",
+        customer: stripeCustomerId,
+        line_items: [
+          {
+            price: oneOffPriceId as string,
+            quantity: 1,
+          },
+        ],
+        success_url: `${params.appUrl}/report?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${params.appUrl}/report?checkout=cancelled`,
+        metadata: {
+          ...params.baseMetadata,
+          plan: "",
+          interval: "",
+          reportType: checkoutRequest.sku,
+          sku: checkoutRequest.sku,
+          priceId: oneOffPriceId ?? "",
+        },
+      })
 }
 
 export async function POST(request: Request) {
@@ -171,12 +282,10 @@ export async function POST(request: Request) {
     let stripeCustomerId = userDocument.stripeCustomerId
 
     if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({
+      const customer = await createStripeCustomer(stripe, {
+        uid: user.uid,
         email: user.email ?? userDocument.email,
         name: user.name ?? userDocument.displayName,
-        metadata: {
-          uid: user.uid,
-        },
       })
 
       stripeCustomerId = customer.id
@@ -222,59 +331,51 @@ export async function POST(request: Request) {
         checkoutRequest.checkoutType === "subscription" ? checkoutRequest.interval : undefined,
     })
 
-    const oneOffPriceId =
-      checkoutRequest.checkoutType === "one_off"
-        ? getOneOffPriceId(checkoutRequest.sku)
-        : null
+    let session: Stripe.Checkout.Session
 
-    const session =
-      checkoutRequest.checkoutType === "subscription"
-        ? await stripe.checkout.sessions.create({
-            mode: "subscription",
-            customer: stripeCustomerId,
-            line_items: [
-              {
-                price: getSubscriptionPriceId(checkoutRequest.plan, checkoutRequest.interval),
-                quantity: 1,
-              },
-            ],
-            success_url: `${appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${appUrl}/pricing?checkout=cancelled`,
-            metadata: {
-              ...baseMetadata,
-              plan: checkoutRequest.plan,
-              interval: checkoutRequest.interval,
-              reportType: "",
-            },
-            subscription_data: {
-              metadata: {
-                uid: user.uid,
-                checkoutType: "subscription",
-                plan: checkoutRequest.plan,
-                interval: checkoutRequest.interval,
-              },
-            },
-          })
-        : await stripe.checkout.sessions.create({
-            mode: "payment",
-            customer: stripeCustomerId,
-            line_items: [
-              {
-                price: oneOffPriceId as string,
-                quantity: 1,
-              },
-            ],
-            success_url: `${appUrl}/report?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${appUrl}/report?checkout=cancelled`,
-            metadata: {
-              ...baseMetadata,
-              plan: "",
-              interval: "",
-              reportType: checkoutRequest.sku,
-              sku: checkoutRequest.sku,
-              priceId: oneOffPriceId ?? "",
-            },
-          })
+    try {
+      session = await createCheckoutSession(stripe, stripeCustomerId, checkoutRequest, {
+        appUrl,
+        baseMetadata,
+        uid: user.uid,
+      })
+    } catch (error) {
+      if (!stripeCustomerId || !isMissingStripeCustomerError(error, stripeCustomerId)) {
+        throw error
+      }
+
+      await logInfo("stripe.checkout", "stripe_customer_recreating_after_missing", {
+        uid: user.uid,
+        staleStripeCustomerId: stripeCustomerId,
+      })
+
+      const replacementCustomer = await createStripeCustomer(stripe, {
+        uid: user.uid,
+        email: user.email ?? userDocument.email,
+        name: user.name ?? userDocument.displayName,
+      })
+
+      stripeCustomerId = replacementCustomer.id
+
+      await userRef.set(
+        {
+          stripeCustomerId,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+
+      await logInfo("stripe.checkout", "stripe_customer_recreated", {
+        uid: user.uid,
+        stripeCustomerId,
+      })
+
+      session = await createCheckoutSession(stripe, stripeCustomerId, checkoutRequest, {
+        appUrl,
+        baseMetadata,
+        uid: user.uid,
+      })
+    }
 
     if (!session.url) {
       throw new Error("Stripe did not return a Checkout Session URL.")

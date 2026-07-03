@@ -6,15 +6,12 @@ import { getAdminDb } from "@/lib/firebase/admin"
 import { getBillingEventRef, getUserDocument, getUserRef } from "@/lib/firebase/firestore"
 import { logInfo, logWarn } from "@/lib/logging/logger"
 import { getLimitForPlan } from "@/lib/subscription/limits"
+import { getSubscriptionCatalogFromPriceId } from "@/lib/stripe/prices"
 import {
-  getEffectivePlanForStatus,
-  isGraceEligibleStatus,
-  isPremiumStatus,
-  normalizeStripeSubscriptionStatus,
-} from "@/lib/subscription/subscription"
-import { getSubscriptionCatalogFromPriceId, isPaidPlan } from "@/lib/stripe/prices"
+  resolveStripeSubscriptionState as resolveSubscriptionState,
+  type ResolvedStripeSubscriptionState,
+} from "@/lib/stripe/subscription-state"
 import { getStripe } from "@/lib/stripe/server"
-import type { BillingInterval, SubscriptionPlan } from "@/types/subscription"
 
 function getExpandableId(value: unknown) {
   if (!value) return null
@@ -46,53 +43,8 @@ export function getSubscriptionPriceId(subscription: Stripe.Subscription) {
   return subscription.items.data[0]?.price?.id ?? null
 }
 
-export function getSubscriptionInterval(subscription: Stripe.Subscription): BillingInterval | null {
-  const interval = subscription.items.data[0]?.price?.recurring?.interval
-  if (interval === "month") return "monthly"
-  if (interval === "year") return "annual"
-  return null
-}
-
 function getCurrentPeriodEnd(subscription: Stripe.Subscription) {
   return subscription.items.data[0]?.current_period_end ?? null
-}
-
-function resolvePaidPlanFromMetadata(subscription: Stripe.Subscription): SubscriptionPlan | null {
-  const metadataPlan = subscription.metadata?.plan
-  return isPaidPlan(metadataPlan) ? metadataPlan : null
-}
-
-function resolveBillingIntervalFromMetadata(
-  subscription: Stripe.Subscription
-): BillingInterval | null {
-  const metadataInterval = subscription.metadata?.interval
-  if (metadataInterval === "monthly" || metadataInterval === "annual") {
-    return metadataInterval
-  }
-  return null
-}
-
-function resolveStripePlan(
-  subscription: Stripe.Subscription,
-  subscriptionStatus: ReturnType<typeof normalizeStripeSubscriptionStatus>
-): SubscriptionPlan {
-  const priceId = getSubscriptionPriceId(subscription)
-  const subscriptionCatalog = getSubscriptionCatalogFromPriceId(priceId)
-
-  if (subscriptionCatalog.plan !== "free") {
-    return subscriptionCatalog.plan
-  }
-
-  const metadataPlan = resolvePaidPlanFromMetadata(subscription)
-  if (metadataPlan) {
-    return metadataPlan
-  }
-
-  if (isPremiumStatus(subscriptionStatus)) {
-    return "premium"
-  }
-
-  return "free"
 }
 
 export async function findUidByStripeCustomerId(stripeCustomerId?: string | null) {
@@ -156,6 +108,30 @@ export async function retrieveStripeSubscription(subscriptionId: string) {
   })
 }
 
+export function resolveStripeSubscriptionState(args: {
+  subscription: Stripe.Subscription
+  deleted?: boolean
+  existingGraceUntilMs?: number | null
+  nowMs?: number
+}): ResolvedStripeSubscriptionState {
+  const subscription = args.subscription
+  return {
+    ...resolveSubscriptionState({
+      status: subscription.status,
+      deleted: args.deleted,
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      metadataPlan: subscription.metadata?.plan,
+      metadataInterval: subscription.metadata?.interval,
+      priceId: getSubscriptionPriceId(subscription),
+      recurringInterval: subscription.items.data[0]?.price?.recurring?.interval ?? null,
+      currentPeriodEndSeconds: getCurrentPeriodEnd(subscription),
+      existingGraceUntilMs: args.existingGraceUntilMs,
+      nowMs: args.nowMs,
+    }),
+    stripeCustomerId: getStripeCustomerId(subscription.customer),
+  }
+}
+
 export interface SyncSubscriptionOptions {
   uid?: string | null
   deleted?: boolean
@@ -171,23 +147,9 @@ export async function syncUserSubscriptionFromStripe(
   const uid = options.uid ?? (await resolveUidForSubscription(subscription))
   const deleted = options.deleted ?? false
   const source = options.source ?? "stripe_sync"
-  const stripeCustomerId = getStripeCustomerId(subscription.customer)
-  const priceId = getSubscriptionPriceId(subscription)
-  const currentPeriodEndSeconds = getCurrentPeriodEnd(subscription)
-  const stripeStatus = deleted ? "canceled" : subscription.status
-  const subscriptionStatus = normalizeStripeSubscriptionStatus(stripeStatus)
-  const stripePlan = resolveStripePlan(subscription, subscriptionStatus)
-  const billingInterval = deleted
-    ? null
-    : getSubscriptionInterval(subscription) ??
-      getSubscriptionCatalogFromPriceId(priceId).interval ??
-      resolveBillingIntervalFromMetadata(subscription)
-  const currentPeriodEnd =
-    currentPeriodEndSeconds && !deleted
-      ? Timestamp.fromMillis(currentPeriodEndSeconds * 1000)
-      : null
 
   if (!uid) {
+    const stripeCustomerId = getStripeCustomerId(subscription.customer)
     await logWarn("stripe.sync", "stripe_subscription_uid_missing", {
       stripeCustomerId,
       stripeSubscriptionId: subscription.id,
@@ -200,34 +162,31 @@ export async function syncUserSubscriptionFromStripe(
 
   const existingUser = await getUserDocument(uid)
   const graceUntilMs = timestampToMillis(existingUser?.graceUntil)
-  const nowMs = Date.now()
-  const isInGrace = typeof graceUntilMs === "number" && graceUntilMs > nowMs
-  const keepPaidPlanViaGrace =
-    !deleted && stripePlan !== "free" && isGraceEligibleStatus(subscriptionStatus) && isInGrace
-  const hasPremiumStatus = isPremiumStatus(subscriptionStatus)
-  const subscriptionPlan = deleted
-    ? "free"
-    : hasPremiumStatus || keepPaidPlanViaGrace
-      ? stripePlan
-      : getEffectivePlanForStatus(subscriptionStatus, stripePlan)
-  const shouldClearGrace =
-    deleted ||
-    hasPremiumStatus ||
-    stripeStatus === "canceled" ||
-    (typeof graceUntilMs === "number" && graceUntilMs <= nowMs)
+  const state = resolveStripeSubscriptionState({
+    subscription,
+    deleted,
+    existingGraceUntilMs: graceUntilMs,
+  })
+  const currentPeriodEnd =
+    state.currentPeriodEndSeconds && !deleted
+      ? Timestamp.fromMillis(state.currentPeriodEndSeconds * 1000)
+      : null
 
   await getUserRef(uid).set(
     {
-      stripeCustomerId,
+      stripeCustomerId: state.stripeCustomerId,
       stripeSubscriptionId: subscription.id,
-      subscriptionStatus,
-      subscriptionPlan,
-      subscriptionInterval: subscriptionPlan === "free" ? null : billingInterval,
+      subscriptionStatus: state.subscriptionStatus,
+      subscriptionPlan: state.subscriptionPlan,
+      subscriptionInterval:
+        state.subscriptionPlan === "free" ? null : state.billingInterval,
       currentPeriodEnd: currentPeriodEnd ?? FieldValue.delete(),
-      cancelAtPeriodEnd: deleted ? false : subscription.cancel_at_period_end,
-      graceUntil: shouldClearGrace ? FieldValue.delete() : existingUser?.graceUntil ?? FieldValue.delete(),
-      graceReason: shouldClearGrace ? FieldValue.delete() : existingUser?.graceReason ?? FieldValue.delete(),
-      monthlyQuestionLimit: getLimitForPlan(subscriptionPlan),
+      cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+      graceUntil:
+        state.shouldClearGrace ? FieldValue.delete() : existingUser?.graceUntil ?? FieldValue.delete(),
+      graceReason:
+        state.shouldClearGrace ? FieldValue.delete() : existingUser?.graceReason ?? FieldValue.delete(),
+      monthlyQuestionLimit: getLimitForPlan(state.subscriptionPlan),
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
@@ -236,28 +195,28 @@ export async function syncUserSubscriptionFromStripe(
   await saveBillingEvent(uid, source, {
     type: options.stripeEventType ?? "subscription.synced",
     stripeEventId: options.stripeEventId,
-    status: subscriptionStatus,
-    plan: subscriptionPlan,
+    status: state.subscriptionStatus,
+    plan: state.subscriptionPlan,
     raw: {
       stripeSubscriptionId: subscription.id,
-      stripeCustomerId,
-      priceId,
-      billingInterval,
-      cancelAtPeriodEnd: deleted ? false : subscription.cancel_at_period_end,
-      currentPeriodEnd: currentPeriodEndSeconds,
-      isInGrace,
-      keepPaidPlanViaGrace,
+      stripeCustomerId: state.stripeCustomerId,
+      priceId: state.priceId,
+      billingInterval: state.billingInterval,
+      cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+      currentPeriodEnd: state.currentPeriodEndSeconds,
+      isInGrace: state.isInGrace,
+      keepPaidPlanViaGrace: state.keepPaidPlanViaGrace,
     },
   })
 
   await logInfo("stripe.sync", "stripe_subscription_synced", {
     uid,
     stripeSubscriptionId: subscription.id,
-    subscriptionStatus,
-    subscriptionPlan,
-    billingInterval,
-    cancelAtPeriodEnd: deleted ? false : subscription.cancel_at_period_end,
-    isInGrace,
+    subscriptionStatus: state.subscriptionStatus,
+    subscriptionPlan: state.subscriptionPlan,
+    billingInterval: state.billingInterval,
+    cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+    isInGrace: state.isInGrace,
     source,
   })
 
@@ -265,16 +224,16 @@ export async function syncUserSubscriptionFromStripe(
     await trackAnalyticsEvent("subscription_cancelled", {
       uid,
       source: "pricing",
-      plan: subscriptionPlan,
-      interval: billingInterval ?? undefined,
+      plan: state.subscriptionPlan,
+      interval: state.billingInterval ?? undefined,
     })
   }
 
   return {
     uid,
-    subscriptionStatus,
-    subscriptionPlan,
-    billingInterval,
+    subscriptionStatus: state.subscriptionStatus,
+    subscriptionPlan: state.subscriptionPlan,
+    billingInterval: state.billingInterval,
   }
 }
 
