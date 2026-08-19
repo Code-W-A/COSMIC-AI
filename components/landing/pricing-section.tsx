@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { Check, Loader2, Sparkles } from "lucide-react"
@@ -26,6 +26,14 @@ import type { BillingInterval } from "@/types/subscription"
 import type { PartnerPreview } from "@/lib/partners/types"
 
 export function PricingSection() {
+  return (
+    <Suspense fallback={null}>
+      <PricingSectionContent />
+    </Suspense>
+  )
+}
+
+function PricingSectionContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const localizedPath = useLocalizedPath()
