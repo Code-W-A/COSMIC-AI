@@ -19,6 +19,8 @@ import {
 } from "@/lib/stripe/live-test-pricing"
 import { getOneOffPriceId, getSubscriptionPriceId, type PricingMode } from "@/lib/stripe/prices"
 import { getStripe } from "@/lib/stripe/server"
+import { resolveCheckoutReferral } from "@/lib/partners/attribution"
+import { ensureReferralCoupon } from "@/lib/partners/stripe-coupon"
 import type {
   BillingInterval,
   CheckoutType,
@@ -200,6 +202,8 @@ async function createCheckoutSession(
     baseMetadata: Record<string, string>
     uid: string
     pricingMode: PricingMode
+    referralCode?: string | null
+    referralCouponId?: string | null
   }
 ) {
   const oneOffPriceId =
@@ -214,6 +218,15 @@ async function createCheckoutSession(
   if (params.pricingMode === "live_test") {
     sessionMetadata.pricingMode = "live_test"
   }
+
+  if (params.referralCode) {
+    sessionMetadata.referralCode = params.referralCode
+  }
+
+  const discounts =
+    checkoutRequest.checkoutType === "subscription" && params.referralCouponId
+      ? [{ coupon: params.referralCouponId }]
+      : undefined
 
   return checkoutRequest.checkoutType === "subscription"
     ? stripe.checkout.sessions.create({
@@ -231,6 +244,7 @@ async function createCheckoutSession(
         ],
         success_url: `${params.appUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${params.appUrl}/pricing?checkout=cancelled`,
+        ...(discounts ? { discounts } : {}),
         metadata: {
           ...sessionMetadata,
           plan: checkoutRequest.plan,
@@ -248,6 +262,10 @@ async function createCheckoutSession(
 
             if (params.pricingMode === "live_test") {
               subscriptionMetadata.pricingMode = "live_test"
+            }
+
+            if (params.referralCode) {
+              subscriptionMetadata.referralCode = params.referralCode
             }
 
             return subscriptionMetadata
@@ -349,9 +367,37 @@ export async function POST(request: Request) {
     }
 
     const appUrl = getAppUrl(request)
+    const referralPartner =
+      checkoutRequest.checkoutType === "subscription" && pricingMode !== "live_test"
+        ? await resolveCheckoutReferral({
+            uid: user.uid,
+            email: user.email ?? userDocument.email,
+            request,
+          })
+        : null
+    const referralCoupon =
+      referralPartner && checkoutRequest.checkoutType === "subscription"
+        ? await ensureReferralCoupon(stripe, referralPartner)
+        : null
+
+    if (referralPartner && !userDocument.referredBy) {
+      await userRef.set(
+        {
+          referredBy: referralPartner.code,
+          referralCapturedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    }
+
     const baseMetadata: Record<string, string> = {
       uid: user.uid,
       checkoutType: checkoutRequest.checkoutType,
+    }
+
+    if (referralPartner) {
+      baseMetadata.referralCode = referralPartner.code
     }
 
     await logInfo("growth", "checkout_started", {
@@ -361,6 +407,8 @@ export async function POST(request: Request) {
       interval:
         checkoutRequest.checkoutType === "subscription" ? checkoutRequest.interval : undefined,
       sku: checkoutRequest.checkoutType === "one_off" ? checkoutRequest.sku : undefined,
+      referralCode: referralPartner?.code,
+      referralDiscountApplied: Boolean(referralCoupon),
     })
 
     const checkoutLocale = getRequestLocale(request) === "ro" ? "ro" : "en"
@@ -373,17 +421,22 @@ export async function POST(request: Request) {
       plan: checkoutRequest.checkoutType === "subscription" ? checkoutRequest.plan : undefined,
       interval:
         checkoutRequest.checkoutType === "subscription" ? checkoutRequest.interval : undefined,
+      referralCode: referralPartner?.code,
     })
+
+    const checkoutParams = {
+      appUrl,
+      baseMetadata,
+      uid: user.uid,
+      pricingMode,
+      referralCode: referralPartner?.code ?? null,
+      referralCouponId: referralCoupon?.couponId ?? null,
+    }
 
     let session: Stripe.Checkout.Session
 
     try {
-      session = await createCheckoutSession(stripe, stripeCustomerId, checkoutRequest, {
-        appUrl,
-        baseMetadata,
-        uid: user.uid,
-        pricingMode,
-      })
+      session = await createCheckoutSession(stripe, stripeCustomerId, checkoutRequest, checkoutParams)
     } catch (error) {
       if (!stripeCustomerId || !isMissingStripeCustomerError(error, stripeCustomerId)) {
         throw error
@@ -415,12 +468,7 @@ export async function POST(request: Request) {
         stripeCustomerId,
       })
 
-      session = await createCheckoutSession(stripe, stripeCustomerId, checkoutRequest, {
-        appUrl,
-        baseMetadata,
-        uid: user.uid,
-        pricingMode,
-      })
+      session = await createCheckoutSession(stripe, stripeCustomerId, checkoutRequest, checkoutParams)
     }
 
     if (!session.url) {

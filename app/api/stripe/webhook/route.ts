@@ -13,6 +13,7 @@ import {
   issueOblioInvoiceForStripeInvoice,
   markOblioCorrectionVoided,
 } from "@/lib/oblio/invoice"
+import { recordPaidReferralFromInvoice } from "@/lib/partners/record-paid"
 import {
   SUBSCRIPTION_GRACE_DAYS,
   SUBSCRIPTION_GRACE_REASON_INVOICE_PAYMENT_FAILED,
@@ -258,6 +259,16 @@ async function handleInvoiceEvent(event: Stripe.Event, kind: "succeeded" | "fail
   }
 
   if (kind === "succeeded" && uid) {
+    try {
+      await recordPaidReferralFromInvoice({ uid, invoice })
+    } catch (error) {
+      await logWarn("stripe.webhook", "referral_invoice_attribution_failed", {
+        uid,
+        invoiceId: invoice.id,
+        error: getErrorMessage(error),
+      })
+    }
+
     try {
       const outcome = await issueOblioInvoiceForStripeInvoice({ uid, invoice })
 

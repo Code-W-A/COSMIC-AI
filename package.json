@@ -14,7 +14,8 @@
     "e2e:seed": "E2E_USE_FIREBASE_EMULATORS=1 FIREBASE_PROJECT_ID=demo-astroai-e2e FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/e2e/seed.mjs",
     "e2e:reset": "E2E_USE_FIREBASE_EMULATORS=1 FIREBASE_PROJECT_ID=demo-astroai-e2e FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 node scripts/e2e/reset.mjs",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "partners:seed": "node scripts/seed-partner.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

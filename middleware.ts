@@ -6,6 +6,13 @@ import {
   resolvePreferredLocale,
   withLocalePath,
 } from "@/lib/i18n/locale"
+import {
+  REFERRAL_COOKIE_MAX_AGE_SECONDS,
+  REFERRAL_COOKIE_NAME,
+  REFERRAL_QUERY_PARAM,
+  getReferralCodeFromSearchParams,
+  parseReferralCodeFromPathname,
+} from "@/lib/partners/codes"
 
 function shouldBypass(pathname: string) {
   return (
@@ -19,9 +26,44 @@ function shouldBypass(pathname: string) {
   )
 }
 
+function applyReferralCookie(request: NextRequest, response: NextResponse) {
+  const fromPath = parseReferralCodeFromPathname(request.nextUrl.pathname)
+  const fromQuery = getReferralCodeFromSearchParams(request.nextUrl.searchParams)
+  const referralCode = fromPath ?? fromQuery
+  if (!referralCode) return response
+  if (request.cookies.get(REFERRAL_COOKIE_NAME)?.value) return response
+
+  response.cookies.set(REFERRAL_COOKIE_NAME, referralCode, {
+    path: "/",
+    maxAge: REFERRAL_COOKIE_MAX_AGE_SECONDS,
+    sameSite: "lax",
+  })
+  return response
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   if (shouldBypass(pathname)) return NextResponse.next()
+
+  const pathReferralCode = parseReferralCodeFromPathname(pathname)
+  if (pathReferralCode) {
+    const locale =
+      getLocaleFromPathname(pathname) ??
+      resolvePreferredLocale({
+        cookieHeader: request.headers.get("cookie"),
+        acceptLanguage: request.headers.get("accept-language"),
+      })
+    const target = request.nextUrl.clone()
+    target.pathname = `/${locale}`
+    target.searchParams.set(REFERRAL_QUERY_PARAM, pathReferralCode)
+    const response = NextResponse.redirect(target)
+    response.cookies.set(LOCALE_COOKIE_NAME, locale, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    })
+    return applyReferralCookie(request, response)
+  }
 
   const urlLocale = getLocaleFromPathname(pathname)
 
@@ -32,7 +74,7 @@ export function middleware(request: NextRequest) {
       maxAge: 60 * 60 * 24 * 365,
       sameSite: "lax",
     })
-    return response
+    return applyReferralCookie(request, response)
   }
 
   const locale = resolvePreferredLocale({
@@ -48,7 +90,7 @@ export function middleware(request: NextRequest) {
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax",
   })
-  return response
+  return applyReferralCookie(request, response)
 }
 
 export const config = {

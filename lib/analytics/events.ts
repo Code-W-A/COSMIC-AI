@@ -37,6 +37,7 @@ export type AnalyticsMetadata = {
   agentType?: string
   checkoutType?: string
   monthlyQuestionLimit?: number
+  referralCode?: string
 }
 
 const analyticsEventSet = new Set<string>(ANALYTICS_EVENTS)
@@ -93,6 +94,10 @@ export function parseAnalyticsMetadata(raw: unknown): AnalyticsMetadata {
 
   if (typeof input.monthlyQuestionLimit === "number" && Number.isFinite(input.monthlyQuestionLimit)) {
     metadata.monthlyQuestionLimit = input.monthlyQuestionLimit
+  }
+
+  if (typeof input.referralCode === "string" && input.referralCode.trim()) {
+    metadata.referralCode = input.referralCode.trim().slice(0, 32)
   }
 
   return metadata

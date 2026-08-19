@@ -50,6 +50,10 @@ export interface UserDocument {
   monthlyQuestionLimit: number
   monthlyUsageResetAt: FirestoreTimestampLike
   billingProfile?: BillingProfileDocument
+  referredBy?: string
+  referralCapturedAt?: FirestoreTimestampLike
+  premiumSource?: "stripe" | "complimentary_partner"
+  complimentaryPartnerCode?: string
 }
 
 export interface BillingProfileDocument {

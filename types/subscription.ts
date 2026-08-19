@@ -31,4 +31,5 @@ export interface SubscriptionStatusResponse {
   monthlyQuestionCount: number
   monthlyQuestionLimit: number
   isPremium: boolean
+  premiumSource?: "stripe" | "complimentary_partner" | null
 }

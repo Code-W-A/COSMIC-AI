@@ -167,6 +167,24 @@ export async function syncUserSubscriptionFromStripe(
     deleted,
     existingGraceUntilMs: graceUntilMs,
   })
+
+  if (
+    existingUser?.premiumSource === "complimentary_partner" &&
+    (deleted || state.subscriptionPlan === "free")
+  ) {
+    await logInfo("stripe.sync", "complimentary_premium_preserved", {
+      uid,
+      stripeSubscriptionId: subscription.id,
+      source,
+    })
+    return {
+      uid,
+      subscriptionStatus: existingUser.subscriptionStatus,
+      subscriptionPlan: existingUser.subscriptionPlan,
+      billingInterval: existingUser.subscriptionInterval ?? null,
+    }
+  }
+
   const currentPeriodEnd =
     state.currentPeriodEndSeconds && !deleted
       ? Timestamp.fromMillis(state.currentPeriodEndSeconds * 1000)
@@ -187,6 +205,7 @@ export async function syncUserSubscriptionFromStripe(
       graceReason:
         state.shouldClearGrace ? FieldValue.delete() : existingUser?.graceReason ?? FieldValue.delete(),
       monthlyQuestionLimit: getLimitForPlan(state.subscriptionPlan),
+      premiumSource: "stripe",
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }

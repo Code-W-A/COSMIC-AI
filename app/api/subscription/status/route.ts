@@ -55,6 +55,7 @@ export async function GET(request: Request) {
       monthlyQuestionCount: userDocument.monthlyQuestionCount ?? 0,
       monthlyQuestionLimit: userDocument.monthlyQuestionLimit ?? 5,
       isPremium,
+      premiumSource: userDocument.premiumSource ?? null,
     })
   } catch (error) {
     await logError("subscription", "subscription_status_failed", {

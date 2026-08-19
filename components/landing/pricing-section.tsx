@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { Check, Loader2, Sparkles } from "lucide-react"
@@ -23,6 +23,7 @@ import {
   resolveLiveTestPricingState,
 } from "@/lib/stripe/live-test-pricing"
 import type { BillingInterval } from "@/types/subscription"
+import type { PartnerPreview } from "@/lib/partners/types"
 
 export function PricingSection() {
   const router = useRouter()
@@ -32,11 +33,27 @@ export function PricingSection() {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly")
   const [error, setError] = useState("")
+  const [referral, setReferral] = useState<PartnerPreview | null>(null)
   const liveTestPricing = useMemo(
     () => resolveLiveTestPricingState(searchParams),
     [searchParams]
   )
   const subscriptionDisplayPrice = getSubscriptionDisplayPrice(billingInterval)
+
+  useEffect(() => {
+    let active = true
+    fetch("/api/partners/referral-context")
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!active) return
+        const next = payload?.referral ?? null
+        if (next?.code && next?.name) setReferral(next)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
   const pricingPathWithLiveTest = useMemo(
     () => appendLiveTestPricingParams(localizedPath("/pricing"), liveTestPricing),
     [liveTestPricing, localizedPath]
@@ -201,6 +218,14 @@ export function PricingSection() {
             Live test pricing activ
           </p>
         )}
+
+        {referral ? (
+          <p className="mx-auto mt-6 max-w-xl rounded-2xl border border-[#8B5CFF]/30 bg-[#6D4BFF]/10 px-4 py-3 text-center text-sm text-[#F5F2FF]">
+            {t("pricing.referral.banner")
+              .replace("{percent}", String(referral.discountPercent))
+              .replace("{name}", referral.name)}
+          </p>
+        ) : null}
 
         <div className="mt-8 flex justify-center">
           <div className="inline-flex rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.05)] p-1">

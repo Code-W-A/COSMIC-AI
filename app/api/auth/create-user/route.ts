@@ -7,6 +7,11 @@ import { createUserDocumentIfMissing } from "@/lib/firebase/firestore"
 import { trackAnalyticsEvent } from "@/lib/analytics/track-server"
 import { logError, logInfo } from "@/lib/logging/logger"
 import { getRequestLocale } from "@/lib/i18n/request-locale"
+import {
+  applyReferralOnUserCreate,
+  grantComplimentaryPartnerPremiumIfEligible,
+  resolveReferralCodeFromRequest,
+} from "@/lib/partners/attribution"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -20,8 +25,29 @@ export async function POST(request: Request) {
   const normalizedLocale: "ro" | "en" = locale === "ro" ? "ro" : "en"
 
   try {
+    let body: Record<string, unknown> = {}
+    try {
+      body = (await request.json()) as Record<string, unknown>
+    } catch {
+      body = {}
+    }
+
     const beforeBootstrap = await getAccountDataSnapshot(user.uid)
     const userCreated = await createUserDocumentIfMissing(user)
+    const referralCode = resolveReferralCodeFromRequest(
+      request,
+      typeof body.referralCode === "string" ? body.referralCode : null
+    )
+
+    if (userCreated) {
+      await applyReferralOnUserCreate({
+        uid: user.uid,
+        email: user.email,
+        referralCode,
+      })
+    }
+
+    await grantComplimentaryPartnerPremiumIfEligible(user)
     const afterBootstrap = await getAccountDataSnapshot(user.uid)
 
     if (userCreated) {
@@ -29,6 +55,7 @@ export async function POST(request: Request) {
         uid: user.uid,
         locale: normalizedLocale,
         source: "landing",
+        referralCode: referralCode ?? undefined,
       })
     }
 

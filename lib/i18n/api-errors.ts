@@ -9,6 +9,10 @@ const apiErrorMessages: Record<string, Record<Locale, string>> = {
     en: "You must be signed in to continue.",
     ro: "Trebuie să fii autentificat pentru a continua.",
   },
+  forbidden: {
+    en: "Admin access required.",
+    ro: "Accesul de administrator este necesar.",
+  },
   invalid_json: {
     en: "Request body must be valid JSON.",
     ro: "Body-ul requestului trebuie să fie JSON valid.",
